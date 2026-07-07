@@ -1,14 +1,14 @@
 import { createClient } from '@supabase/supabase-js';
 
 // Usamos variáveis de ambiente que serão configuradas na Vercel e no Desktop
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 if (!supabaseUrl || !supabaseAnonKey) {
   console.warn('Atenção: Variáveis de ambiente do Supabase não encontradas.');
 }
 
-export const supabase = createClient(
+export const supabase = createClient( 
   supabaseUrl as string, 
   supabaseAnonKey as string
 );

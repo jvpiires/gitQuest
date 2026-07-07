@@ -2,15 +2,19 @@
   "name": "gitquest-monorepo",
   "version": "1.0.0",
   "private": true,
-  "packageManager": "pnpm@9.15.9",
+  "packageManager": "pnpm@11.10.0",
   "engines": {
-    "node": "22.x"
+    "node": "24.x"
   },
   "scripts": {
+    "type-check": "pnpm --filter \"*\" type-check",
     "dev": "pnpm --filter \"*\" dev",
     "build": "pnpm --filter \"*\" build"
   },
   "dependencies": {
     "turbo": "^2.5.9"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.0"
   }
 }
