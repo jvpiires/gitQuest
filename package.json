@@ -13,8 +13,5 @@
   },
   "dependencies": {
     "turbo": "^2.5.9"
-  },
-  "devDependencies": {
-    "@types/node": "^26.1.0"
   }
 }
