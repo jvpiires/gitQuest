@@ -2,8 +2,12 @@
   "name": "gitquest-monorepo",
   "version": "1.0.0",
   "private": true,
+  "packageManager": "pnpm@11.10.0",
   "scripts": {
     "dev": "pnpm --filter \"*\" dev",
     "build": "pnpm --filter \"*\" build"
+  },
+  "dependencies": {
+    "turbo": "latest"
   }
 }
