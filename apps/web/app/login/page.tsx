@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@gitquest/database";
 
 // Domínio corporativo permitido. Ajuste para o domínio da sua empresa.
-const CORPORATE_DOMAIN = "@seplag.mt.gov.br";
+//const CORPORATE_DOMAIN = "@seplag.mt.gov.br";
+const AUTH_MODE = process.env.NEXT_PUBLIC_AUTH_MODE ?? "supabase";
 
 export default function LoginPage() {
   const [mode, setMode] = useState<"magic" | "password" | "gitlab">("gitlab");
@@ -13,11 +14,39 @@ export default function LoginPage() {
   );
   const [errorMsg, setErrorMsg] = useState("");
 
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const queryError = url.searchParams.get("authError");
+    const queryDescription = url.searchParams.get("authErrorDescription");
+
+    const hashParams = new URLSearchParams(url.hash.replace(/^#/, ""));
+    const hashError = hashParams.get("error");
+    const hashDescription = hashParams.get("error_description");
+
+    const error = queryError || hashError;
+    const description = queryDescription || hashDescription;
+
+    if (error) {
+      setStatus("error");
+      setErrorMsg(
+        decodeURIComponent(
+          description ||
+            `Falha no SSO (${error}). Verifique a configuração do provider GitLab no Supabase.`,
+        ),
+      );
+    }
+  }, []);
+
 
 
   const handleGitlabLogin = async () => {
     setStatus("sending");
     setErrorMsg("");
+
+    if (AUTH_MODE === "internal_gitlab") {
+      window.location.href = "/api/auth/gitlab/start?next=%2F";
+      return;
+    }
 
     try {
       const { error } = await supabase.auth.signInWithOAuth({

@@ -16,7 +16,7 @@ export function Leaderboard() {
         .from("users")
         .select("id, gitlab_username, class_type, current_level, total_xp")
         .order("total_xp", { ascending: false })
-        .limit(10);
+        .limit(30);
 
       if (!error && data) {
         setPlayers(data);
@@ -41,7 +41,7 @@ export function Leaderboard() {
   };
 
   return (
-    <div className="fixed top-4 right-4 z-50 w-80 bg-slate-950/80 backdrop-blur-md p-5 rounded-2xl border border-slate-800 shadow-2xl">
+    <div className="fixed top-24 right-4 z-50 w-80 bg-slate-950/80 backdrop-blur-md p-5 rounded-2xl border border-slate-800 shadow-2xl">
       <h2 className="text-sm font-bold text-amber-500 uppercase tracking-widest mb-4 flex items-center gap-2">
         <span>🏆</span> Rank dos que mais Trabalhou
       </h2>
@@ -49,7 +49,7 @@ export function Leaderboard() {
       {loading ? (
         <div className="text-slate-400 text-sm animate-pulse">Lendo os pergaminhos...</div>
       ) : (
-        <ul className="flex flex-col gap-3">
+        <ul className="flex flex-col gap-3 max-h-[68vh] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-slate-900/40">
           {players.map((player, index) => {
             const isAdmin =
               player.gitlab_username?.toLowerCase() === ADMIN_USERNAME;

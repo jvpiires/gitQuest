@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@gitquest/database";
 
+const AUTH_MODE = process.env.NEXT_PUBLIC_AUTH_MODE ?? "supabase";
+
 const ADMIN_USERNAME = "joao.santos";
 const MIN_CHARS = 10;
 const MAX_CHARS = 600;
@@ -20,16 +22,37 @@ export function SuggestionChest() {
 
   useEffect(() => {
     async function load() {
+      if (AUTH_MODE === "internal_gitlab") {
+        const meRes = await fetch("/api/player/me");
+        if (!meRes.ok) return;
+
+        const me = (await meRes.json()) as {
+          authenticated?: boolean;
+          hasCharacter?: boolean;
+          user?: { id?: string; gitlab_username?: string | null };
+        };
+
+        if (!me.authenticated || !me.user?.id || !me.hasCharacter) return;
+
+        setUserId(me.user.id);
+        if (me.user.gitlab_username) {
+          setGitlabUsername(me.user.gitlab_username);
+        }
+
+        return;
+      }
+
       const {
         data: { session },
       } = await supabase.auth.getSession();
 
       if (!session) return;
+      const uid = session.user.id;
 
       const { data: userRow, error: userError } = await supabase
         .from("users")
         .select("id, gitlab_username")
-        .eq("id", session.user.id)
+        .eq("id", uid)
         .maybeSingle();
 
       if (userError || !userRow) return;
@@ -77,6 +100,29 @@ export function SuggestionChest() {
 
     setError(null);
     setPhase("sending");
+
+    if (AUTH_MODE === "internal_gitlab") {
+      try {
+        const res = await fetch("/api/admin-suggestions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: clean }),
+        });
+
+        if (!res.ok) {
+          const data = (await res.json()) as { error?: string };
+          throw new Error(data.error ?? "Nao foi possivel enviar agora.");
+        }
+
+        setPhase("sent");
+      } catch (err) {
+        console.error("Erro ao enviar sugestao:", err);
+        setError(err instanceof Error ? err.message : "Nao foi possivel enviar agora.");
+        setPhase("open");
+      }
+
+      return;
+    }
 
     try {
       const { error: insertError } = await supabase

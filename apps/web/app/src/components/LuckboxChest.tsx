@@ -8,6 +8,8 @@ import {
   type Rarity,
 } from "@gitquest/database";
 
+const AUTH_MODE = process.env.NEXT_PUBLIC_AUTH_MODE ?? "supabase";
+
 type Phase = "idle" | "opening" | "revealed";
 
 interface OpenResult {
@@ -25,46 +27,96 @@ export function LuckboxChest() {
   const [result, setResult] = useState<OpenResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const syncXpAndRefreshBoxesInternal = async (uid: string) => {
+    try {
+      const res = await fetch("/api/sync-xp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: uid }),
+      });
+      if (!res.ok) return;
+
+      const refreshedRes = await fetch("/api/player/me");
+      if (!refreshedRes.ok) return;
+
+      const refreshed = (await refreshedRes.json()) as {
+        user?: { available_boxes?: number };
+      };
+      setAvailableBoxes(refreshed.user?.available_boxes ?? 0);
+    } catch (err) {
+      console.error("Falha ao sincronizar XP:", err);
+    }
+  };
+
+  const loadInternal = async () => {
+    const meRes = await fetch("/api/player/me");
+    if (!meRes.ok) return;
+
+    const me = (await meRes.json()) as {
+      authenticated?: boolean;
+      hasCharacter?: boolean;
+      user?: { id?: string; available_boxes?: number };
+    };
+
+    if (!me.authenticated || !me.user?.id || !me.hasCharacter) return;
+
+    const uid = me.user.id;
+    setUserId(uid);
+    setAvailableBoxes(me.user.available_boxes ?? 0);
+    await syncXpAndRefreshBoxesInternal(uid);
+  };
+
+  const loadSupabase = async () => {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session) return;
+
+    const uid = session.user.id;
+
+    // Só ativa o baú se a sessão tiver um personagem na tabela users.
+    // Sem isso, um usuário logado sem personagem tentaria abrir e receberia 404.
+    const { data, error } = await supabase
+      .from("users")
+      .select("available_boxes")
+      .eq("id", uid)
+      .maybeSingle();
+
+    if (error || !data) return;
+
+    setUserId(uid);
+    setAvailableBoxes(data.available_boxes ?? 0);
+
+    // Sincroniza a XP retroativa do GitLab a cada reload. Ao ganhar níveis,
+    // o servidor concede novas luckboxes; então relemos o saldo atualizado.
+    try {
+      const res = await fetch("/api/sync-xp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: uid }),
+      });
+      if (res.ok) {
+        const { data: refreshed } = await supabase
+          .from("users")
+          .select("available_boxes")
+          .eq("id", uid)
+          .maybeSingle();
+        if (refreshed) setAvailableBoxes(refreshed.available_boxes ?? 0);
+      }
+    } catch (err) {
+      console.error("Falha ao sincronizar XP:", err);
+    }
+  };
+
   // Carrega a sessão e o saldo de luckboxes do jogador logado.
   useEffect(() => {
     async function load() {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) return;
-
-      // Só ativa o baú se a sessão tiver um personagem na tabela users.
-      // Sem isso, um usuário logado sem personagem tentaria abrir e receberia 404.
-      const { data, error } = await supabase
-        .from("users")
-        .select("available_boxes")
-        .eq("id", session.user.id)
-        .maybeSingle();
-
-      if (error || !data) return;
-
-      setUserId(session.user.id);
-      setAvailableBoxes(data.available_boxes ?? 0);
-
-      // Sincroniza a XP retroativa do GitLab a cada reload. Ao ganhar níveis,
-      // o servidor concede novas luckboxes; então relemos o saldo atualizado.
-      try {
-        const res = await fetch("/api/sync-xp", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ userId: session.user.id }),
-        });
-        if (res.ok) {
-          const { data: refreshed } = await supabase
-            .from("users")
-            .select("available_boxes")
-            .eq("id", session.user.id)
-            .maybeSingle();
-          if (refreshed) setAvailableBoxes(refreshed.available_boxes ?? 0);
-        }
-      } catch (err) {
-        console.error("Falha ao sincronizar XP:", err);
+      if (AUTH_MODE === "internal_gitlab") {
+        await loadInternal();
+        return;
       }
+
+      await loadSupabase();
     }
 
     load();

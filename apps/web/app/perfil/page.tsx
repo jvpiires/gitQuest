@@ -12,6 +12,8 @@ import {
   type User,
 } from "@gitquest/database";
 
+const AUTH_MODE = process.env.NEXT_PUBLIC_AUTH_MODE ?? "supabase";
+
 // Item que o jogador possui + se está equipado.
 interface OwnedItem {
   item: GameItem;
@@ -61,8 +63,66 @@ export default function PerfilPage() {
   const [slotFilter, setSlotFilter] = useState<"ALL" | ItemSlot>("ALL");
   const [equippedOnly, setEquippedOnly] = useState(false);
 
-  // Carrega a sessão, o personagem e os itens que ele possui.
-  const load = useCallback(async () => {
+  const loadInternalProfile = useCallback(async () => {
+    if (AUTH_MODE === "internal_gitlab") {
+      const meRes = await fetch("/api/player/me");
+      if (!meRes.ok) {
+        router.push("/login");
+        return;
+      }
+
+      const me = (await meRes.json()) as {
+        authenticated?: boolean;
+        hasCharacter?: boolean;
+        role?: "admin" | "player";
+        user?: User;
+      };
+
+      if (!me.authenticated || !me.user?.id) {
+        router.push("/login");
+        return;
+      }
+
+      if (!me.hasCharacter) {
+        router.push("/dashboard");
+        return;
+      }
+
+      setPlayer(me.user);
+
+      const inventoryRes = await fetch("/api/player/inventory");
+      if (!inventoryRes.ok) {
+        throw new Error("Falha ao carregar inventário.");
+      }
+
+      const inventoryData = (await inventoryRes.json()) as {
+        items?: Array<{ item_id: string; equipped: boolean }>;
+      };
+
+      const resolved: OwnedItem[] = (inventoryData.items ?? [])
+        .map((row) => ({
+          item: ITEMS_BY_ID[row.item_id],
+          equipped: Boolean(row.equipped),
+        }))
+        .filter((entry) => entry.item);
+
+      setItems(resolved);
+
+      if (me.role === "admin") {
+        const suggestionsRes = await fetch("/api/admin-suggestions");
+        if (suggestionsRes.ok) {
+          const suggestionsData = (await suggestionsRes.json()) as {
+            suggestions?: AdminSuggestion[];
+          };
+          setSuggestions(suggestionsData.suggestions ?? []);
+        }
+      }
+
+      setLoading(false);
+    }
+  }, [router]);
+
+  const loadSupabaseProfile = useCallback(async () => {
     const {
       data: { session },
     } = await supabase.auth.getSession();
@@ -126,6 +186,16 @@ export default function PerfilPage() {
     setLoading(false);
   }, [router]);
 
+  // Carrega a sessão, o personagem e os itens que ele possui.
+  const load = useCallback(async () => {
+    if (AUTH_MODE === "internal_gitlab") {
+      await loadInternalProfile();
+      return;
+    }
+
+    await loadSupabaseProfile();
+  }, [loadInternalProfile, loadSupabaseProfile]);
+
   useEffect(() => {
     load();
   }, [load]);
@@ -165,6 +235,33 @@ export default function PerfilPage() {
 
     setSendingSuggestion(true);
     setSuggestionFeedback(null);
+
+    if (AUTH_MODE === "internal_gitlab") {
+      try {
+        const res = await fetch("/api/admin-suggestions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message }),
+        });
+
+        if (!res.ok) {
+          const data = (await res.json()) as { error?: string };
+          throw new Error(data.error ?? "Não foi possível enviar sua sugestão.");
+        }
+
+        setSuggestionMsg("");
+        setSuggestionFeedback("Sugestão enviada para o admin.");
+      } catch (error) {
+        console.error("Erro ao enviar sugestão:", error);
+        setSuggestionFeedback(
+          error instanceof Error ? error.message : "Não foi possível enviar sua sugestão.",
+        );
+      } finally {
+        setSendingSuggestion(false);
+      }
+      return;
+    }
+
     try {
       const { error } = await supabase.from("admin_suggestions").insert({
         author_id: player.id,

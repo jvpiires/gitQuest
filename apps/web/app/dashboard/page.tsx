@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import { supabase, ClassType } from '@gitquest/database';
 import { useRouter } from 'next/navigation';
 
+const AUTH_MODE = process.env.NEXT_PUBLIC_AUTH_MODE ?? 'supabase';
+
 export default function Dashboard() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -17,23 +19,63 @@ export default function Dashboard() {
 
   useEffect(() => {
     async function checkUser() {
+      if (AUTH_MODE === 'internal_gitlab') {
+        const meRes = await fetch('/api/player/me');
+        if (!meRes.ok) {
+          router.push('/');
+          return;
+        }
+
+        const me = (await meRes.json()) as {
+          authenticated?: boolean;
+          hasCharacter?: boolean;
+          user?: { id?: string; gitlab_username?: string | null };
+        };
+
+        if (!me.authenticated || !me.user?.id) {
+          router.push('/');
+          return;
+        }
+
+        const uid = me.user.id;
+        setUserId(uid);
+        if (me.user.gitlab_username) {
+          setGitlabUsername(me.user.gitlab_username);
+        }
+
+        if (!me.hasCharacter) {
+          setIsNewUser(true);
+        } else {
+          setIsNewUser(false);
+          fetch('/api/sync-xp', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: uid }),
+          }).catch((err) => console.error('Falha ao sincronizar XP:', err));
+        }
+
+        setLoading(false);
+        return;
+      }
+
       const { data: { session } } = await supabase.auth.getSession();
-      
+
       if (!session) {
         router.push('/');
         return;
       }
 
-      setUserId(session.user.id);
+      const uid = session.user.id;
+      setUserId(uid);
 
       // Verifica se o usuário já tem um personagem na tabela public.users
       const { data: profile } = await supabase
         .from('users')
         .select('*')
-        .eq('id', session.user.id)
+        .eq('id', uid)
         .single();
 
-      if (!profile || !profile.class_type) {
+      if (!profile?.class_type) {
         setIsNewUser(true);
       } else {
         setIsNewUser(false);
@@ -42,7 +84,7 @@ export default function Dashboard() {
         fetch('/api/sync-xp', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: session.user.id }),
+          body: JSON.stringify({ userId: uid }),
         }).catch((err) => console.error('Falha ao sincronizar XP:', err));
       }
       
@@ -52,11 +94,44 @@ export default function Dashboard() {
     checkUser();
   }, [router]);
 
-  const handleCreateCharacter = async (e: React.FormEvent) => {
+  const handleCreateCharacter = async (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!gitlabUsername || !selectedClass || !userId) return;
 
     setSaving(true);
+
+    if (AUTH_MODE === 'internal_gitlab') {
+      try {
+        const res = await fetch('/api/player/character', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            gitlabUsername,
+            classType: selectedClass,
+          }),
+        });
+
+        if (!res.ok) {
+          const data = (await res.json()) as { error?: string };
+          throw new Error(data.error ?? 'Erro ao forjar personagem.');
+        }
+
+        fetch('/api/sync-xp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId }),
+        }).catch((err) => console.error('Falha ao sincronizar XP:', err));
+
+        setIsNewUser(false);
+      } catch (error) {
+        console.error('Erro ao salvar personagem:', error);
+        alert(error instanceof Error ? error.message : 'Erro ao forjar personagem.');
+      } finally {
+        setSaving(false);
+      }
+
+      return;
+    }
 
     const { error } = await supabase
       .from('users')
@@ -102,8 +177,9 @@ export default function Dashboard() {
         <form onSubmit={handleCreateCharacter} className="w-full max-w-2xl flex flex-col gap-8">
           
           <div className="flex flex-col gap-2 items-center">
-            <label className="font-semibold text-lg">Qual o seu usuário no GitLab interno?</label>
+            <label htmlFor="gitlab-username" className="font-semibold text-lg">Qual o seu usuário no GitLab interno?</label>
             <input
+              id="gitlab-username"
               type="text"
               placeholder="ex: joao.silva"
               value={gitlabUsername}
@@ -121,7 +197,8 @@ export default function Dashboard() {
               { id: 'CLERIC', name: '🛡️ Clérigo', desc: 'Bônus massivo em Code Reviews estruturados.' },
               { id: 'ARCHER', name: '🏹 Arqueiro', desc: 'Bônus por pipelines CI/CD perfeitas.' }
             ].map((cls) => (
-              <div 
+              <button
+                type="button"
                 key={cls.id}
                 onClick={() => setSelectedClass(cls.id as ClassType)}
                 className={`p-4 rounded-xl cursor-pointer border-2 transition-all ${
@@ -132,7 +209,7 @@ export default function Dashboard() {
               >
                 <h3 className="text-xl font-bold text-center mb-2">{cls.name}</h3>
                 <p className="text-sm text-gray-400 text-center">{cls.desc}</p>
-              </div>
+              </button>
             ))}
           </div>
 

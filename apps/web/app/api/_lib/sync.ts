@@ -15,6 +15,7 @@ const supabaseAdmin = getSupabaseAdmin(process.env.SUPABASE_SERVICE_ROLE_KEY!);
 // O GitLab interno (rede corporativa) só responde em http, por isso o default.
 const GITLAB_API_URL = process.env.GITLAB_API_URL;
 export const GITLAB_TOKEN = process.env.GITLAB_TOKEN;
+const STRICT_GITLAB_SYNC = process.env.STRICT_GITLAB_SYNC === "true";
 
 interface GitlabUser {
   id: number;
@@ -51,7 +52,7 @@ function getGitlabApiUrl(): string {
   const configured = GITLAB_API_URL?.trim();
   if (configured) return configured;
 
-  if (process.env.NODE_ENV === "production") {
+  if (process.env.NODE_ENV === "production" && STRICT_GITLAB_SYNC) {
     throw new Error("GITLAB_API_URL não configurado em produção.");
   }
 
@@ -127,7 +128,7 @@ export async function syncUser(user: DbUser): Promise<SyncedUser> {
   try {
     retroXp = await fetchRetroactiveXp(user.gitlab_username);
   } catch (gitlabError) {
-    if (process.env.NODE_ENV === "production") {
+    if (process.env.NODE_ENV === "production" && STRICT_GITLAB_SYNC) {
       throw new Error(
         `GitLab indisponível para ${user.gitlab_username}: ${
           gitlabError instanceof Error ? gitlabError.message : "erro desconhecido"
@@ -136,7 +137,7 @@ export async function syncUser(user: DbUser): Promise<SyncedUser> {
     }
 
     console.warn(
-      `⚠️ GitLab indisponível para ${user.gitlab_username}, usando XP atual.`,
+      `⚠️ GitLab indisponível para ${user.gitlab_username} (${getGitlabApiUrl()}), usando XP atual.`,
       gitlabError,
     );
   }

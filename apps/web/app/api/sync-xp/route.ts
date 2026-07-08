@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@gitquest/database";
 import { GITLAB_TOKEN, syncUser, type DbUser } from "../_lib/sync";
+import { resolveGameRouteUserId } from "../_lib/request-auth";
 
 const supabaseAdmin = getSupabaseAdmin(process.env.SUPABASE_SERVICE_ROLE_KEY!);
 
@@ -14,13 +15,11 @@ export async function POST(request: Request) {
     }
 
     const body = (await request.json()) as { userId?: string };
-    const userId = body.userId;
-    if (!userId) {
-      return NextResponse.json(
-        { error: "userId é obrigatório." },
-        { status: 400 },
-      );
+    const resolved = resolveGameRouteUserId(request, body.userId);
+    if (!resolved.ok) {
+      return NextResponse.json({ error: resolved.error }, { status: resolved.status });
     }
+    const userId = resolved.userId;
 
     // Sincroniza apenas o jogador logado (leve, roda a cada reload).
     // Para sincronizar TODOS os jogadores de uma vez, use /api/sync-all.

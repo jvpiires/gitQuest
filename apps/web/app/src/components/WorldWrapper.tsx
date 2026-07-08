@@ -28,11 +28,26 @@ interface WorldWrapperProps {
 export function WorldWrapper({ players: initialPlayers = [] }: Readonly<WorldWrapperProps>) {
   const [players, setPlayers] = useState<User[]>(initialPlayers);
   const [equippedByUser, setEquippedByUser] = useState<EquippedMap>({});
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const authMode = process.env.NEXT_PUBLIC_AUTH_MODE ?? "supabase";
 
   useEffect(() => {
     // Busca no cliente garante que os bonecos apareçam mesmo se o fetch do
     // servidor voltar vazio (RLS/sessão). Espelha a lógica do Leaderboard.
     async function fetchWorld() {
+      if (authMode === "internal_gitlab") {
+        const meRes = await fetch("/api/player/me");
+        if (meRes.ok) {
+          const me = (await meRes.json()) as { user?: { id?: string } };
+          setCurrentUserId(me.user?.id ?? null);
+        }
+      } else {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        setCurrentUserId(session?.user.id ?? null);
+      }
+
       const [playersRes, itemsRes] = await Promise.all([
         supabase
           .from("users")
@@ -60,7 +75,7 @@ export function WorldWrapper({ players: initialPlayers = [] }: Readonly<WorldWra
     }
 
     fetchWorld();
-  }, []);
+  }, [authMode]);
 
   if (players.length === 0) {
     return (
@@ -77,6 +92,7 @@ export function WorldWrapper({ players: initialPlayers = [] }: Readonly<WorldWra
       key={players.length}
       players={players}
       equippedByUser={equippedByUser}
+      currentUserId={currentUserId}
     />
   );
 }

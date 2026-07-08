@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@gitquest/database";
 
+const AUTH_MODE = process.env.NEXT_PUBLIC_AUTH_MODE ?? "supabase";
+
 // Controles no topo direito da tela inicial:
 // - Login/Logout conforme a sessão.
 // - "Sincronizar todos": puxa a XP de todos os jogadores do GitLab.
@@ -15,6 +17,15 @@ export function HomeControls() {
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
 
   useEffect(() => {
+    if (AUTH_MODE === "internal_gitlab") {
+      fetch("/api/auth/session/me")
+        .then((res) => {
+          setLoggedIn(res.ok);
+        })
+        .catch(() => setLoggedIn(false));
+      return;
+    }
+
     let active = true;
 
     supabase.auth.getSession().then(({ data }) => {
@@ -32,6 +43,12 @@ export function HomeControls() {
   }, []);
 
   const handleLogout = async () => {
+    if (AUTH_MODE === "internal_gitlab") {
+      await fetch("/api/auth/logout", { method: "POST" });
+      router.refresh();
+      return;
+    }
+
     await supabase.auth.signOut();
     router.refresh();
   };
@@ -40,15 +57,18 @@ export function HomeControls() {
     setSyncing(true);
     setSyncMsg(null);
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
       const headers: HeadersInit = {
         "Content-Type": "application/json",
       };
-      if (session?.access_token) {
-        headers.Authorization = `Bearer ${session.access_token}`;
+
+      if (AUTH_MODE !== "internal_gitlab") {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
+        if (session?.access_token) {
+          headers.Authorization = `Bearer ${session.access_token}`;
+        }
       }
 
       const res = await fetch("/api/sync-all", { method: "POST", headers });

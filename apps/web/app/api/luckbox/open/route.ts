@@ -5,6 +5,7 @@ import {
   ITEMS_BY_ID,
   type GameItem,
 } from "@gitquest/database";
+import { resolveGameRouteUserId } from "../../_lib/request-auth";
 
 // Cliente admin (service role) para gravar o item ignorando o RLS.
 const supabaseAdmin = getSupabaseAdmin(process.env.SUPABASE_SERVICE_ROLE_KEY!);
@@ -22,13 +23,11 @@ export async function POST(request: Request) {
     }
 
     const body = (await request.json()) as { userId?: string };
-    const userId = body.userId;
-    if (!userId) {
-      return NextResponse.json(
-        { error: "userId é obrigatório." },
-        { status: 400 },
-      );
+    const resolved = resolveGameRouteUserId(request, body.userId);
+    if (!resolved.ok) {
+      return NextResponse.json({ error: resolved.error }, { status: resolved.status });
     }
+    const userId = resolved.userId;
 
     // Busca o jogador e valida saldo de caixas.
     const { data: user, error: fetchError } = await supabaseAdmin

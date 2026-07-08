@@ -283,7 +283,7 @@ export function createPlayerContainer(
     .setOrigin(0.5);
 
   // Nameplate.
-  const nameBg = scene.add.rectangle(0, -bodyHeight - 42, 128, 32, 0x020617, 0.82);
+  const nameBg = scene.add.rectangle(0, -bodyHeight - 42, 140, 46, 0x020617, 0.82);
   nameBg.setStrokeStyle(1, 0x475569);
 
   const nameText = scene.add
@@ -298,7 +298,7 @@ export function createPlayerContainer(
   const statsText = scene.add
     .text(
       0,
-      -bodyHeight - 35,
+      -bodyHeight - 36,
       `Lv.${player.current_level} | ${player.total_xp} XP`,
       {
         fontFamily: "monospace",
@@ -306,6 +306,14 @@ export function createPlayerContainer(
         color: "#34d399",
       },
     )
+    .setOrigin(0.5);
+
+  const kdaText = scene.add
+    .text(0, -bodyHeight - 25, "KDA 0/0", {
+      fontFamily: "monospace",
+      fontSize: "9px",
+      color: "#f8fafc",
+    })
     .setOrigin(0.5);
 
   container.add([
@@ -322,7 +330,15 @@ export function createPlayerContainer(
     nameBg,
     nameText,
     statsText,
+    kdaText,
   ]);
+
+  container.setData("userId", player.id);
+  container.setData("userName", player.gitlab_username);
+  container.setData("statsText", statsText);
+  container.setData("kdaText", kdaText);
+  container.setData("kills", 0);
+  container.setData("deaths", 0);
 
   return container;
 }

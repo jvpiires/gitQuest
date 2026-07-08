@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin, ITEMS_BY_ID } from "@gitquest/database";
+import { resolveGameRouteUserId } from "../../_lib/request-auth";
 
 const supabaseAdmin = getSupabaseAdmin(process.env.SUPABASE_SERVICE_ROLE_KEY!);
 
@@ -12,11 +13,17 @@ export async function POST(request: Request) {
       itemId?: string;
       equip?: boolean;
     };
-    const { userId, itemId, equip } = body;
+    const { itemId, equip } = body;
 
-    if (!userId || !itemId) {
+    const resolved = resolveGameRouteUserId(request, body.userId);
+    if (!resolved.ok) {
+      return NextResponse.json({ error: resolved.error }, { status: resolved.status });
+    }
+    const userId = resolved.userId;
+
+    if (!itemId) {
       return NextResponse.json(
-        { error: "userId e itemId são obrigatórios." },
+        { error: "itemId é obrigatório." },
         { status: 400 },
       );
     }
