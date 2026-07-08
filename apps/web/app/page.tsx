@@ -3,6 +3,7 @@ import Link from "next/link";
 import { WorldWrapper } from "./src/components/WorldWrapper";
 import { Leaderboard } from "./src/components/Leaderboard";
 import { LuckboxChest } from "./src/components/LuckboxChest";
+import { HomeControls } from "./src/components/HomeControls";
 
 export default async function Home() {
   // Busca os heróis para popular o mapa diretamente no servidor
@@ -24,6 +25,9 @@ export default async function Home() {
       >
         <span className="text-lg">🎒</span> Meu Perfil
       </Link>
+
+      {/* Login/Logout + Sincronizar todos no topo direito */}
+      <HomeControls />
 
       {/* Baú da Luckbox no canto inferior esquerdo */}
       <LuckboxChest />
