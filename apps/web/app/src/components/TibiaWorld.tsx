@@ -59,6 +59,7 @@ interface BattleState {
   hpB: number;
   powerA: number;
   powerB: number;
+  turn: "A" | "B";
   timer?: Phaser.Time.TimerEvent;
 }
 
@@ -82,6 +83,7 @@ class WorldScene extends Phaser.Scene {
   private readonly playerContainers = new Map<string, Phaser.GameObjects.Container>();
   private activeBattle: BattleState | null = null;
   private battleHud: BattleHud | null = null;
+  private lastBattlePair: [string, string] | null = null;
 
   // Deslocamento para centralizar o grid iso na tela.
   private originX = 0;
@@ -110,6 +112,10 @@ class WorldScene extends Phaser.Scene {
     this.drawArenaBanner();
     this.drawDecorations();
     this.players.forEach((player) => this.spawnPlayer(player));
+
+    if (this.players.length >= 2) {
+      this.scheduleRandomBattle(2400);
+    }
   }
 
   // --- 1. PISO ISOMÉTRICO (losangos com profundidade, estilo Habbo) ---
@@ -400,6 +406,116 @@ class WorldScene extends Phaser.Scene {
     this.battleHud = null;
   }
 
+  private emitPowerCast(
+    attacker: Phaser.GameObjects.Container,
+    defender: Phaser.GameObjects.Container,
+    damage: number,
+    attackerPower: number,
+  ): void {
+    const startX = attacker.x;
+    const startY = attacker.y - 62;
+    const endX = defender.x;
+    const endY = defender.y - 72;
+    const isCritical = damage >= 20 || attackerPower >= 85;
+    const beamColor = isCritical ? 0xf97316 : 0x38bdf8;
+    const burstColor = isCritical ? 0xfacc15 : 0x93c5fd;
+
+    const beam = this.add
+      .ellipse(startX, startY, isCritical ? 16 : 12, isCritical ? 16 : 12, beamColor, 1)
+      .setDepth(9100);
+    const trail = this.add
+      .ellipse(startX, startY, 36, 36, beamColor, 0.18)
+      .setDepth(9099);
+
+    this.tweens.add({
+      targets: [beam, trail],
+      x: endX,
+      y: endY,
+      duration: 260,
+      ease: "Sine.easeIn",
+      onComplete: () => {
+        const burst = this.add.circle(endX, endY, isCritical ? 26 : 20, burstColor, 0.45).setDepth(9101);
+        const dmgText = this.add
+          .text(endX, endY - 18, `-${damage}`, {
+            fontFamily: "monospace",
+            fontSize: isCritical ? "18px" : "14px",
+            color: isCritical ? "#fde047" : "#bfdbfe",
+            fontStyle: "bold",
+          })
+          .setOrigin(0.5)
+          .setDepth(9102);
+
+        this.tweens.add({
+          targets: burst,
+          scaleX: 1.6,
+          scaleY: 1.6,
+          alpha: 0,
+          duration: 320,
+          ease: "Quad.easeOut",
+          onComplete: () => burst.destroy(),
+        });
+
+        this.tweens.add({
+          targets: dmgText,
+          y: endY - 50,
+          alpha: 0,
+          duration: 650,
+          ease: "Sine.easeOut",
+          onComplete: () => dmgText.destroy(),
+        });
+
+        beam.destroy();
+        trail.destroy();
+      },
+    });
+  }
+
+  private pickRandomDuelists(): [Phaser.GameObjects.Container, Phaser.GameObjects.Container] | null {
+    const available = Array.from(this.playerContainers.values()).filter(
+      (player) => !player.getData("inBattle"),
+    );
+    if (available.length < 2) return null;
+
+    const shuffled = Phaser.Utils.Array.Shuffle(available.slice());
+    let first = shuffled[0];
+    let second = shuffled[1];
+
+    if (this.lastBattlePair) {
+      const [lastA, lastB] = this.lastBattlePair;
+      for (let i = 0; i < shuffled.length; i++) {
+        for (let j = i + 1; j < shuffled.length; j++) {
+          const idA = String(shuffled[i].getData("userId") ?? "");
+          const idB = String(shuffled[j].getData("userId") ?? "");
+          const repeated =
+            (idA === lastA && idB === lastB) ||
+            (idA === lastB && idB === lastA);
+          if (!repeated) {
+            first = shuffled[i];
+            second = shuffled[j];
+            return [first, second];
+          }
+        }
+      }
+    }
+
+    return [first, second];
+  }
+
+  private scheduleRandomBattle(delayMs = 1500): void {
+    this.time.delayedCall(delayMs, () => {
+      if (this.activeBattle) return;
+
+      const duelists = this.pickRandomDuelists();
+      if (!duelists) return;
+
+      const [fighterA, fighterB] = duelists;
+      const nameA = String(fighterA.getData("userName") ?? "Aventureiro A");
+      const nameB = String(fighterB.getData("userName") ?? "Aventureiro B");
+      this.showToast(`A arena escolheu: ${nameA} vs ${nameB}!`);
+      this.startBattle(fighterA, fighterB);
+    });
+  }
+
   private finishBattle(winner: Phaser.GameObjects.Container, loser: Phaser.GameObjects.Container): void {
     const state = this.activeBattle;
     if (!state) return;
@@ -417,6 +533,11 @@ class WorldScene extends Phaser.Scene {
 
     this.showToast(`${winner.getData("userName")} venceu o duelo na arena!`);
 
+    this.lastBattlePair = [
+      String(winner.getData("userId") ?? ""),
+      String(loser.getData("userId") ?? ""),
+    ];
+
     [winner, loser].forEach((fighter) => {
       const tile = this.randomNonArenaTile();
       this.moveToTile(fighter, tile.col, tile.row, 700, () => {
@@ -425,6 +546,7 @@ class WorldScene extends Phaser.Scene {
     });
 
     this.activeBattle = null;
+    this.scheduleRandomBattle(1800);
   }
 
   private startBattle(
@@ -453,6 +575,7 @@ class WorldScene extends Phaser.Scene {
         hpB: 100,
         powerA: Phaser.Math.Clamp(40 + levelA * 2 + Phaser.Math.Between(0, 12), 20, 100),
         powerB: Phaser.Math.Clamp(40 + levelB * 2 + Phaser.Math.Between(0, 12), 20, 100),
+        turn: Phaser.Math.Between(0, 1) === 0 ? "A" : "B",
       };
       this.activeBattle = state;
       this.createBattleHud(state);
@@ -462,11 +585,19 @@ class WorldScene extends Phaser.Scene {
         loop: true,
         callback: () => {
           if (!this.activeBattle) return;
-          const damageAToB = Phaser.Math.Between(8, 18) + Math.floor(state.powerA / 20);
-          const damageBToA = Phaser.Math.Between(8, 18) + Math.floor(state.powerB / 20);
 
-          state.hpB -= damageAToB;
-          state.hpA -= damageBToA;
+          if (state.turn === "A") {
+            const damageAToB = Phaser.Math.Between(8, 18) + Math.floor(state.powerA / 20);
+            state.hpB -= damageAToB;
+            this.emitPowerCast(state.fighterA, state.fighterB, damageAToB, state.powerA);
+            state.turn = "B";
+          } else {
+            const damageBToA = Phaser.Math.Between(8, 18) + Math.floor(state.powerB / 20);
+            state.hpA -= damageBToA;
+            this.emitPowerCast(state.fighterB, state.fighterA, damageBToA, state.powerB);
+            state.turn = "A";
+          }
+
           this.updateBattleHud(state);
 
           if (state.hpA <= 0 || state.hpB <= 0) {
@@ -514,7 +645,7 @@ class WorldScene extends Phaser.Scene {
     this.showToast(`Desafio enviado para ${targetName}...`);
 
     this.time.delayedCall(900, () => {
-        const accepted = secureRandomUnit() > 0.2;
+      const accepted = secureRandomUnit() > 0.2;
       if (!accepted) {
         this.showToast(`${targetName} recusou o desafio.`);
         return;
@@ -595,6 +726,8 @@ class WorldScene extends Phaser.Scene {
     container.setPosition(x, y);
     container.setData("col", col);
     container.setData("row", row);
+    container.setData("userId", player.id);
+    container.setData("userName", player.gitlab_username);
     container.setData("level", player.current_level);
     container.setData("inBattle", false);
     container.setSize(90, 120);

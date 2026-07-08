@@ -1,0 +1,168 @@
+import { randomUUID } from "node:crypto";
+import { getSupabaseAdmin } from "@gitquest/database";
+import { NextResponse } from "next/server";
+import {
+  createInternalSessionToken,
+  getAuthMode,
+  setInternalSessionCookie,
+} from "../../../_lib/session";
+
+const supabaseAdmin = getSupabaseAdmin(process.env.SUPABASE_SERVICE_ROLE_KEY!);
+
+interface GitlabUser {
+  id: number;
+  username?: string;
+  name?: string;
+  state?: string;
+}
+
+interface LoginBody {
+  username?: string;
+  next?: string;
+}
+
+function trimTrailingSlashes(value: string): string {
+  let result = value;
+  while (result.endsWith("/")) {
+    result = result.slice(0, -1);
+  }
+  return result;
+}
+
+function resolveGitlabApiUrl(): string {
+  const explicit = process.env.GITLAB_API_URL?.trim();
+  if (explicit) return trimTrailingSlashes(explicit);
+
+  const oauthBase = process.env.GITLAB_OAUTH_BASE_URL?.trim();
+  if (oauthBase) {
+    return `${trimTrailingSlashes(oauthBase)}/api/v4`;
+  }
+
+  return "http://git.sad.infovia-mt/api/v4"; // NOSONAR
+}
+
+function normalizeUsername(raw: string): string {
+  return raw.trim().replace(/^@+/, "").toLowerCase();
+}
+
+function isSafeNextPath(next: string): boolean {
+  return next.startsWith("/") && !next.startsWith("//");
+}
+
+async function resolveGitlabUser(username: string): Promise<GitlabUser | null> {
+  const headers = new Headers();
+  const token = process.env.GITLAB_TOKEN?.trim();
+  if (token) {
+    headers.set("PRIVATE-TOKEN", token);
+  }
+
+  const apiUrl = resolveGitlabApiUrl();
+  const exactRes = await fetch(
+    `${apiUrl}/users?username=${encodeURIComponent(username)}`,
+    {
+      headers,
+      signal: AbortSignal.timeout(8000),
+    },
+  );
+
+  if (!exactRes.ok) {
+    throw new Error(`Falha ao consultar usuário no GitLab (HTTP ${exactRes.status}).`);
+  }
+
+  const exactUsers = (await exactRes.json()) as GitlabUser[];
+  if (Array.isArray(exactUsers) && exactUsers.length > 0) {
+    return exactUsers[0];
+  }
+
+  const searchRes = await fetch(`${apiUrl}/users?search=${encodeURIComponent(username)}`, {
+    headers,
+    signal: AbortSignal.timeout(8000),
+  });
+
+  if (!searchRes.ok) {
+    throw new Error(`Falha na busca de usuário no GitLab (HTTP ${searchRes.status}).`);
+  }
+
+  const searchedUsers = (await searchRes.json()) as GitlabUser[];
+  const found = searchedUsers.find(
+    (candidate) => candidate.username?.toLowerCase() === username,
+  );
+
+  return found ?? null;
+}
+
+export async function POST(request: Request) {
+  if (getAuthMode() !== "internal_gitlab") {
+    return NextResponse.json(
+      { error: "Rota disponível apenas no modo internal_gitlab." },
+      { status: 400 },
+    );
+  }
+
+  try {
+    const body = (await request.json()) as LoginBody;
+    const normalizedUsername = normalizeUsername(body.username ?? "");
+
+    if (!normalizedUsername) {
+      return NextResponse.json({ error: "username é obrigatório." }, { status: 400 });
+    }
+
+    const gitlabUser = await resolveGitlabUser(normalizedUsername);
+    if (!gitlabUser?.username) {
+      return NextResponse.json(
+        { error: "Usuário não encontrado no GitLab interno." },
+        { status: 404 },
+      );
+    }
+
+    const username = gitlabUser.username.toLowerCase();
+    const { data: existingUser } = await supabaseAdmin
+      .from("users")
+      .select("id")
+      .eq("gitlab_username", username)
+      .maybeSingle();
+
+    let userId = existingUser?.id;
+    if (!userId) {
+      userId = randomUUID();
+      const { error: insertError } = await supabaseAdmin.from("users").insert({
+        id: userId,
+        gitlab_username: username,
+        current_level: 1,
+        total_xp: 0,
+      });
+
+      if (insertError) {
+        return NextResponse.json(
+          { error: "Não foi possível criar/vincular o usuário local." },
+          { status: 500 },
+        );
+      }
+    }
+
+    const sessionToken = createInternalSessionToken(userId, username);
+    const nextPath = isSafeNextPath(body.next ?? "") ? (body.next as string) : "/dashboard";
+
+    const response = NextResponse.json({
+      ok: true,
+      user: {
+        id: userId,
+        gitlab_username: username,
+      },
+      nextPath,
+    });
+    setInternalSessionCookie(response, sessionToken);
+    return response;
+  } catch (error) {
+    console.error("Erro no login por username GitLab:", error);
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Falha inesperada ao autenticar por username.",
+      },
+      { status: 500 },
+    );
+  }
+}
