@@ -14,7 +14,7 @@ function extractBearerToken(authHeader: string | null): string | null {
 async function isAuthorized(request: Request): Promise<boolean> {
   if (getAuthMode() === "internal_gitlab") {
     const session = readInternalSession(request);
-    if (session?.role === "admin") {
+    if (session) {
       return true;
     }
   }
