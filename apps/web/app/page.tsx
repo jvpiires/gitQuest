@@ -5,6 +5,7 @@ import { Leaderboard } from "./src/components/Leaderboard";
 import { LuckboxChest } from "./src/components/LuckboxChest";
 import { SuggestionChest } from "./src/components/SuggestionChest";
 import { HomeControls } from "./src/components/HomeControls";
+import { VersionNoticeModal } from "./src/components/VersionNoticeModal";
 
 export default async function Home() {
   // Busca os heróis para popular o mapa (apenas as colunas usadas na UI).
@@ -37,6 +38,9 @@ export default async function Home() {
 
       {/* Caixa de sugestão para os jogadores enviarem melhorias ao admin */}
       <SuggestionChest />
+
+      {/* Aviso de versao exibido ao entrar na home. */}
+      <VersionNoticeModal />
       
     </main>
   );
