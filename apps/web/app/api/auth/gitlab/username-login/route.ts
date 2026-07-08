@@ -28,6 +28,22 @@ interface LocalUserResolution {
   usernameNotFound: boolean;
 }
 
+type ClassType = "ASSASSIN" | "MAGE" | "CLERIC" | "ARCHER";
+
+function getDefaultClassType(): ClassType {
+  const configured = process.env.DEFAULT_NEW_USER_CLASS?.trim().toUpperCase();
+  if (
+    configured === "ASSASSIN" ||
+    configured === "MAGE" ||
+    configured === "CLERIC" ||
+    configured === "ARCHER"
+  ) {
+    return configured;
+  }
+
+  return "ASSASSIN";
+}
+
 function trimTrailingSlashes(value: string): string {
   let result = value;
   while (result.endsWith("/")) {
@@ -116,7 +132,15 @@ async function findExistingUserId(username: string): Promise<string | null> {
     .eq("gitlab_username", username)
     .maybeSingle();
 
-  return data?.id ?? null;
+  if (data?.id) return data.id;
+
+  const { data: ciData } = await supabaseAdmin
+    .from("users")
+    .select("id")
+    .ilike("gitlab_username", username)
+    .maybeSingle();
+
+  return ciData?.id ?? null;
 }
 
 async function canCreateUserFromGitlab(username: string): Promise<boolean> {
@@ -139,18 +163,52 @@ async function canCreateUserFromGitlab(username: string): Promise<boolean> {
 
 async function createLocalUser(username: string): Promise<string> {
   const userId = randomUUID();
-  const { error: insertError } = await supabaseAdmin.from("users").insert({
+  const basePayload = {
     id: userId,
     gitlab_username: username,
     current_level: 1,
     total_xp: 0,
-  });
+  };
 
-  if (insertError) {
-    throw new Error("Não foi possível criar/vincular o usuário local.");
+  const { error: insertError } = await supabaseAdmin.from("users").insert(basePayload);
+
+  if (!insertError) {
+    return userId;
   }
 
-  return userId;
+  const duplicateByUsername =
+    insertError.code === "23505" ||
+    /duplicate|already exists|unique/i.test(insertError.message || "");
+  if (duplicateByUsername) {
+    const existingId = await findExistingUserId(username);
+    if (existingId) return existingId;
+  }
+
+  const classTypeRequired = /class_type|not-null|null value/i.test(
+    `${insertError.message ?? ""} ${insertError.details ?? ""}`,
+  );
+  if (classTypeRequired) {
+    const { error: retryError } = await supabaseAdmin.from("users").insert({
+      ...basePayload,
+      class_type: getDefaultClassType(),
+    });
+
+    if (!retryError) {
+      return userId;
+    }
+
+    throw new Error(
+      `Não foi possível criar/vincular o usuário local. ${
+        retryError.message || "Falha no retry com class_type padrão."
+      }`,
+    );
+  }
+
+  throw new Error(
+    `Não foi possível criar/vincular o usuário local. ${
+      insertError.message || "Erro desconhecido do Supabase."
+    }`,
+  );
 }
 
 async function resolveOrCreateLocalUser(username: string): Promise<LocalUserResolution> {
