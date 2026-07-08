@@ -41,7 +41,7 @@ export function Leaderboard() {
   return (
     <div className="fixed top-4 right-4 z-50 w-80 bg-slate-950/80 backdrop-blur-md p-5 rounded-2xl border border-slate-800 shadow-2xl">
       <h2 className="text-sm font-bold text-amber-500 uppercase tracking-widest mb-4 flex items-center gap-2">
-        <span>🏆</span> Placar da Taverna
+        <span>🏆</span> Rank dos que mais Trabalhou
       </h2>
 
       {loading ? (

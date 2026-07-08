@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server';
-import { getSupabaseAdmin } from '@gitquest/database';
+import {
+  getSupabaseAdmin,
+  levelFromXp,
+  boxesEarnedForLevel,
+} from '@gitquest/database';
 
 // Ignora a verificação estrita de SSL do Node.js (Apenas para dev local em redes corporativas)
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
@@ -38,14 +42,22 @@ export async function POST(request: Request) {
       // 2. Calcula os novos status
       const newTotalXP = user.total_xp + xpGained;
       // Regra simples: 1 Nível a cada 1000 XP
-      const newLevel = Math.floor(newTotalXP / 1000) + 1; 
+      const newLevel = levelFromXp(newTotalXP);
+
+      // Luckboxes ganhas até o novo nível, descontando as já abertas.
+      const totalBoxesEarned = boxesEarnedForLevel(newLevel);
+      const availableBoxes = Math.max(
+        0,
+        totalBoxesEarned - (user.boxes_opened ?? 0),
+      );
 
       // 3. Atualiza o banco de dados
       const { error: updateError } = await supabaseAdmin
         .from('users')
         .update({
           total_xp: newTotalXP,
-          current_level: newLevel
+          current_level: newLevel,
+          available_boxes: availableBoxes
         })
         .eq('id', user.id);
 

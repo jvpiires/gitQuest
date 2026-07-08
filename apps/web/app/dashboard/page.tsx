@@ -37,7 +37,13 @@ export default function Dashboard() {
         setIsNewUser(true);
       } else {
         setIsNewUser(false);
-        // Aqui depois vamos carregar os dados reais de XP e Nível
+        // Sincroniza a XP retroativa a partir do histórico de commits do GitLab.
+        // Roda no servidor (o token nunca vem para o client) e concede luckboxes.
+        fetch('/api/sync-xp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: session.user.id }),
+        }).catch((err) => console.error('Falha ao sincronizar XP:', err));
       }
       
       setLoading(false);
@@ -68,6 +74,13 @@ export default function Dashboard() {
       setSaving(false);
       return;
     }
+
+    // Recém-criado: já sincroniza a XP retroativa do histórico do GitLab.
+    fetch('/api/sync-xp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId }),
+    }).catch((err) => console.error('Falha ao sincronizar XP:', err));
 
     setIsNewUser(false);
     setSaving(false);
