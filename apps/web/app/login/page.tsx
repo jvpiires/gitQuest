@@ -135,7 +135,7 @@ export default function LoginPage() {
       const res = await fetch("/api/auth/gitlab/username-login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: normalizedUsername, next: "/dashboard" }),
+        body: JSON.stringify({ username: normalizedUsername, next: "/" }),
       });
 
       const data = (await res.json()) as {
@@ -147,7 +147,7 @@ export default function LoginPage() {
         throw new Error(data.error ?? "Não foi possível autenticar com esse username.");
       }
 
-      window.location.href = data.nextPath || "/dashboard";
+      window.location.href = data.nextPath || "/";
     } catch (err) {
       console.error("Exceção ao iniciar login por username:", err);
       setStatus("error");

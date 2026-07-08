@@ -84,7 +84,7 @@ export default function PerfilPage() {
       }
 
       if (!me.hasCharacter) {
-        router.push("/dashboard");
+        router.push("");
         return;
       }
 
@@ -150,7 +150,7 @@ export default function PerfilPage() {
 
     if (!profileRes.data) {
       // Sem personagem ainda: manda forjar no dashboard.
-      router.push("/dashboard");
+      router.push("");
       return;
     }
 

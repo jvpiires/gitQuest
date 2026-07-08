@@ -8,6 +8,8 @@ import {
 } from "../../../_lib/session";
 
 const supabaseAdmin = getSupabaseAdmin(process.env.SUPABASE_SERVICE_ROLE_KEY!);
+const ALLOW_OFFLINE_USERNAME_LOGIN =
+  process.env.ALLOW_OFFLINE_USERNAME_LOGIN !== "false";
 
 interface GitlabUser {
   id: number;
@@ -19,6 +21,11 @@ interface GitlabUser {
 interface LoginBody {
   username?: string;
   next?: string;
+}
+
+interface LocalUserResolution {
+  userId: string;
+  usernameNotFound: boolean;
 }
 
 function trimTrailingSlashes(value: string): string {
@@ -102,6 +109,73 @@ async function resolveGitlabUser(username: string): Promise<GitlabUser | null> {
   return found ?? null;
 }
 
+async function findExistingUserId(username: string): Promise<string | null> {
+  const { data } = await supabaseAdmin
+    .from("users")
+    .select("id")
+    .eq("gitlab_username", username)
+    .maybeSingle();
+
+  return data?.id ?? null;
+}
+
+async function canCreateUserFromGitlab(username: string): Promise<boolean> {
+  try {
+    const gitlabUser = await resolveGitlabUser(username);
+    return Boolean(gitlabUser?.username);
+  } catch (gitlabError) {
+    if (!ALLOW_OFFLINE_USERNAME_LOGIN) {
+      throw gitlabError;
+    }
+
+    console.warn(
+      `Login por username sem validação no GitLab para ${username}. ` +
+        "Habilitado por ALLOW_OFFLINE_USERNAME_LOGIN.",
+      gitlabError,
+    );
+    return true;
+  }
+}
+
+async function createLocalUser(username: string): Promise<string> {
+  const userId = randomUUID();
+  const { error: insertError } = await supabaseAdmin.from("users").insert({
+    id: userId,
+    gitlab_username: username,
+    current_level: 1,
+    total_xp: 0,
+  });
+
+  if (insertError) {
+    throw new Error("Não foi possível criar/vincular o usuário local.");
+  }
+
+  return userId;
+}
+
+async function resolveOrCreateLocalUser(username: string): Promise<LocalUserResolution> {
+  const existingUserId = await findExistingUserId(username);
+  if (existingUserId) {
+    return {
+      userId: existingUserId,
+      usernameNotFound: false,
+    };
+  }
+
+  const canCreate = await canCreateUserFromGitlab(username);
+  if (!canCreate) {
+    return {
+      userId: "",
+      usernameNotFound: true,
+    };
+  }
+
+  return {
+    userId: await createLocalUser(username),
+    usernameNotFound: false,
+  };
+}
+
 export async function POST(request: Request) {
   if (getAuthMode() !== "internal_gitlab") {
     return NextResponse.json(
@@ -118,43 +192,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "username é obrigatório." }, { status: 400 });
     }
 
-    // Primeiro tenta autenticar pelo vínculo local para não depender da rede do GitLab
-    // em cada login. Isso evita erro para usuários já cadastrados.
     const username = normalizedUsername;
-    const { data: existingUser } = await supabaseAdmin
-      .from("users")
-      .select("id")
-      .eq("gitlab_username", username)
-      .maybeSingle();
-
-    let userId = existingUser?.id;
-    if (!userId) {
-      const gitlabUser = await resolveGitlabUser(username);
-      if (!gitlabUser?.username) {
-        return NextResponse.json(
-          { error: "Usuário não encontrado no GitLab interno." },
-          { status: 404 },
-        );
-      }
-
-      userId = randomUUID();
-      const { error: insertError } = await supabaseAdmin.from("users").insert({
-        id: userId,
-        gitlab_username: username,
-        current_level: 1,
-        total_xp: 0,
-      });
-
-      if (insertError) {
-        return NextResponse.json(
-          { error: "Não foi possível criar/vincular o usuário local." },
-          { status: 500 },
-        );
-      }
+    const resolvedUser = await resolveOrCreateLocalUser(username);
+    if (resolvedUser.usernameNotFound) {
+      return NextResponse.json(
+        { error: "Usuário não encontrado no GitLab interno." },
+        { status: 404 },
+      );
     }
+    const userId = resolvedUser.userId;
 
     const sessionToken = createInternalSessionToken(userId, username);
-    const nextPath = isSafeNextPath(body.next ?? "") ? (body.next as string) : "/dashboard";
+    const nextPath = isSafeNextPath(body.next ?? "") ? (body.next as string) : "/";
 
     const response = NextResponse.json({
       ok: true,

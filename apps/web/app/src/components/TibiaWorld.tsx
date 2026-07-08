@@ -357,8 +357,6 @@ class WorldScene extends Phaser.Scene {
     root.add([
       bg,
       title,
-      hpLabelA,
-      hpLabelB,
       hpBgA,
       hpBgB,
       hpBarA,
@@ -368,6 +366,8 @@ class WorldScene extends Phaser.Scene {
       powerBarA,
       powerBarB,
       powerLabel,
+      hpLabelA,
+      hpLabelB,
     ]);
 
     this.battleHud = {
