@@ -40,7 +40,18 @@ export function HomeControls() {
     setSyncing(true);
     setSyncMsg(null);
     try {
-      const res = await fetch("/api/sync-all", { method: "POST" });
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      const headers: HeadersInit = {
+        "Content-Type": "application/json",
+      };
+      if (session?.access_token) {
+        headers.Authorization = `Bearer ${session.access_token}`;
+      }
+
+      const res = await fetch("/api/sync-all", { method: "POST", headers });
       const data = (await res.json()) as { synced?: number; error?: string };
       if (!res.ok) throw new Error(data.error ?? "Falha ao sincronizar.");
       setSyncMsg(`✅ ${data.synced ?? 0} sincronizados`);
@@ -76,6 +87,7 @@ export function HomeControls() {
       {loggedIn ? (
         <button
           type="button"
+          onClick={handleLogout}
           className="flex items-center gap-2 px-4 py-2 rounded-full bg-slate-950/80 backdrop-blur border border-slate-700 text-slate-300 text-sm font-bold uppercase tracking-widest hover:bg-slate-800 transition-colors"
         >
           <span className="text-lg">🚪</span> Sair

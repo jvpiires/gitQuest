@@ -1,5 +1,27 @@
 import { NextResponse } from "next/server";
+import { getSupabaseAdmin } from "@gitquest/database";
 import { GITLAB_TOKEN, syncAllUsers } from "../_lib/sync";
+
+const supabaseAdmin = getSupabaseAdmin(process.env.SUPABASE_SERVICE_ROLE_KEY!);
+
+function extractBearerToken(authHeader: string | null): string | null {
+  if (!authHeader?.startsWith("Bearer ")) return null;
+  const token = authHeader.slice(7).trim();
+  return token.length > 0 ? token : null;
+}
+
+async function isAuthorized(request: Request): Promise<boolean> {
+  const token = extractBearerToken(request.headers.get("authorization"));
+  if (!token) return false;
+
+  const secret = process.env.SYNC_SECRET;
+  if (secret && token === secret) {
+    return true;
+  }
+
+  const { data, error } = await supabaseAdmin.auth.getUser(token);
+  return !error && Boolean(data.user);
+}
 
 // Sincroniza a XP de TODOS os jogadores com o GitLab de uma só vez.
 // Ideal para rodar periodicamente (cron/agendador) ou sob demanda por um admin,
@@ -20,9 +42,15 @@ export async function POST(request: Request) {
 
     const secret = process.env.SYNC_SECRET;
     if (secret) {
-      const auth = request.headers.get("authorization");
-      if (auth !== `Bearer ${secret}`) {
-        return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
+      const authorized = await isAuthorized(request);
+      if (!authorized) {
+        return NextResponse.json(
+          {
+            error:
+              "Não autorizado. Use Authorization: Bearer <SYNC_SECRET> ou um token de sessão válido.",
+          },
+          { status: 401 },
+        );
       }
     } else if (process.env.NODE_ENV === "production") {
       return NextResponse.json(
