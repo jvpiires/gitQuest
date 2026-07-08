@@ -162,7 +162,27 @@ async function canCreateUserFromGitlab(username: string): Promise<boolean> {
 }
 
 async function createLocalUser(username: string): Promise<string> {
-  const userId = randomUUID();
+  const authEmailDomain = process.env.INTERNAL_AUTH_EMAIL_DOMAIN?.trim() || "gitquest.internal";
+  const syntheticEmail = `${username}.${randomUUID()}@${authEmailDomain}`;
+
+  const { data: authCreated, error: authError } = await supabaseAdmin.auth.admin.createUser({
+    email: syntheticEmail,
+    email_confirm: true,
+    user_metadata: {
+      source: "internal_gitlab_username_login",
+      gitlab_username: username,
+    },
+  });
+
+  if (authError || !authCreated.user?.id) {
+    throw new Error(
+      `Não foi possível criar identidade no Auth. ${
+        authError?.message || "Resposta inválida do Supabase Auth."
+      }`,
+    );
+  }
+
+  const userId = authCreated.user.id;
   const basePayload = {
     id: userId,
     gitlab_username: username,
