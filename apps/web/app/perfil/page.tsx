@@ -6,6 +6,7 @@ import {
   supabase,
   ITEMS_BY_ID,
   RARITY_UI,
+  levelProgress,
   type GameItem,
   type ItemSlot,
   type User,
@@ -44,26 +45,31 @@ export default function PerfilPage() {
       return;
     }
 
-    const { data: profile } = await supabase
-      .from("users")
-      .select("*")
-      .eq("id", session.user.id)
-      .maybeSingle();
+    const uid = session.user.id;
 
-    if (!profile) {
+    // Busca o personagem e os itens EM PARALELO, selecionando apenas as
+    // colunas necessárias (evita o custo do select *).
+    const [profileRes, ownedRes] = await Promise.all([
+      supabase
+        .from("users")
+        .select("id, gitlab_username, class_type, current_level, total_xp")
+        .eq("id", uid)
+        .maybeSingle(),
+      supabase
+        .from("user_items")
+        .select("item_id, equipped")
+        .eq("user_id", uid),
+    ]);
+
+    if (!profileRes.data) {
       // Sem personagem ainda: manda forjar no dashboard.
       router.push("/dashboard");
       return;
     }
 
-    setPlayer(profile as User);
+    setPlayer(profileRes.data as User);
 
-    const { data: owned } = await supabase
-      .from("user_items")
-      .select("item_id, equipped")
-      .eq("user_id", session.user.id);
-
-    const resolved: OwnedItem[] = (owned ?? [])
+    const resolved: OwnedItem[] = (ownedRes.data ?? [])
       .map((row) => ({
         item: ITEMS_BY_ID[row.item_id as string],
         equipped: Boolean(row.equipped),
@@ -117,18 +123,20 @@ export default function PerfilPage() {
     if (owned.equipped) equippedBySlot.set(owned.item.slot, owned);
   }
 
+  const progress = levelProgress(player.total_xp);
+
   return (
     <main className="min-h-screen bg-slate-900 text-white p-6 md:p-10">
       <div className="max-w-5xl mx-auto">
         {/* Cabeçalho */}
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-3xl font-bold flex items-center gap-3">
               <span>🎒</span> Perfil de {player.gitlab_username}
             </h1>
             <p className="text-slate-400 mt-1">
-              {player.class_type} · Nível {player.current_level} ·{" "}
-              {player.total_xp} XP
+              {player.class_type} · {player.total_xp.toLocaleString("pt-BR")} XP
+              totais
             </p>
           </div>
           <button
@@ -139,6 +147,37 @@ export default function PerfilPage() {
             ← Voltar ao mundo
           </button>
         </div>
+
+        {/* Barra de progresso de nível */}
+        <section className="mb-10 bg-slate-950/60 border border-slate-800 rounded-xl p-5">
+          <div className="flex items-end justify-between mb-2">
+            <div className="flex items-baseline gap-2">
+              <span className="text-2xl font-black text-amber-400">
+                Nível {progress.level}
+              </span>
+              <span className="text-xs text-slate-500">
+                próximo: {progress.level + 1}
+              </span>
+            </div>
+            <span className="text-xs font-mono text-slate-400">
+              {Math.floor(progress.xpIntoLevel).toLocaleString("pt-BR")} /{" "}
+              {progress.xpForNextLevel.toLocaleString("pt-BR")} XP
+            </span>
+          </div>
+          <div className="h-4 w-full rounded-full bg-slate-800 overflow-hidden border border-slate-700">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-amber-500 to-yellow-400 transition-[width] duration-500"
+              style={{ width: `${progress.percent}%` }}
+            />
+          </div>
+          <p className="text-[11px] text-slate-500 mt-2 text-right">
+            Faltam{" "}
+            {Math.ceil(
+              progress.xpForNextLevel - progress.xpIntoLevel,
+            ).toLocaleString("pt-BR")}{" "}
+            XP para o nível {progress.level + 1}
+          </p>
+        </section>
 
         {/* Slots equipados */}
         <section className="mb-10">

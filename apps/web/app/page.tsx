@@ -6,8 +6,10 @@ import { LuckboxChest } from "./src/components/LuckboxChest";
 import { HomeControls } from "./src/components/HomeControls";
 
 export default async function Home() {
-  // Busca os heróis para popular o mapa diretamente no servidor
-  const { data: players } = await supabase.from("users").select("*");
+  // Busca os heróis para popular o mapa (apenas as colunas usadas na UI).
+  const { data: players } = await supabase
+    .from("users")
+    .select("id, gitlab_username, class_type, current_level, total_xp");
 
   return (
     <main className="relative w-screen h-screen overflow-hidden bg-slate-900">

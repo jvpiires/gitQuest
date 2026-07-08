@@ -34,7 +34,9 @@ export function WorldWrapper({ players: initialPlayers = [] }: Readonly<WorldWra
     // servidor voltar vazio (RLS/sessão). Espelha a lógica do Leaderboard.
     async function fetchWorld() {
       const [playersRes, itemsRes] = await Promise.all([
-        supabase.from("users").select("*"),
+        supabase
+          .from("users")
+          .select("id, gitlab_username, class_type, current_level, total_xp"),
         supabase.from("user_items").select("user_id, item_id").eq("equipped", true),
       ]);
 

@@ -9,10 +9,10 @@ export function Leaderboard() {
 
   useEffect(() => {
     async function fetchPlayers() {
-      // Busca os top 10 heróis ordenados por XP
+      // Busca os top 10 heróis ordenados por XP (apenas colunas usadas).
       const { data, error } = await supabase
         .from("users")
-        .select("*")
+        .select("id, gitlab_username, class_type, current_level, total_xp")
         .order("total_xp", { ascending: false })
         .limit(10);
 

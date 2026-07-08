@@ -32,8 +32,9 @@ export interface User {
   current_level: number;
   total_xp: number;
   // Luckbox: quantas caixas o jogador pode abrir e quantas já abriu.
-  available_boxes: number;
-  boxes_opened: number;
+  // Opcionais porque nem toda consulta seleciona essas colunas (ex.: mapa/placar).
+  available_boxes?: number;
+  boxes_opened?: number;
 }
 
 // Item que um jogador possui (linha da tabela public.user_items).
@@ -59,9 +60,48 @@ export const XP_PER_COMMIT = 100;
 // A cada quantos níveis o jogador ganha uma luckbox.
 export const LEVELS_PER_BOX = 5;
 
-// XP acumulada -> nível (1 nível a cada 1000 XP, começando no nível 1).
+// --- CURVA DE XP PROGRESSIVA ---
+// A XP total necessária para ATINGIR um nível cresce de forma quadrática:
+// os primeiros níveis (0→10) são fáceis e vai ficando mais difícil ao infinito.
+//   xpForLevel(N) = XP_BASE * N^2
+// Ex.: N1=50, N5=1.250, N10=5.000, N20=20.000, N50=125.000.
+const XP_BASE = 50;
+
+// XP total acumulada necessária para atingir um determinado nível.
+export function xpForLevel(level: number): number {
+  if (level <= 1) return 0;
+  return XP_BASE * (level - 1) * (level - 1);
+}
+
+// XP acumulada -> nível atual (inverte a curva quadrática).
 export function levelFromXp(totalXp: number): number {
-  return Math.floor(totalXp / 1000) + 1;
+  if (totalXp <= 0) return 1;
+  return Math.floor(Math.sqrt(totalXp / XP_BASE)) + 1;
+}
+
+// Progresso dentro do nível atual, útil para a barra de "quanto falta".
+export interface LevelProgress {
+  level: number; // nível atual
+  currentLevelXp: number; // XP acumulada desde o início do nível atual
+  xpIntoLevel: number; // quanto já andou dentro do nível atual
+  xpForNextLevel: number; // XP necessária para completar o nível atual
+  percent: number; // 0..100 do progresso no nível
+}
+
+export function levelProgress(totalXp: number): LevelProgress {
+  const level = levelFromXp(totalXp);
+  const start = xpForLevel(level);
+  const next = xpForLevel(level + 1);
+  const span = next - start;
+  const xpIntoLevel = Math.max(0, totalXp - start);
+  const percent = span > 0 ? Math.min(100, (xpIntoLevel / span) * 100) : 0;
+  return {
+    level,
+    currentLevelXp: start,
+    xpIntoLevel,
+    xpForNextLevel: span,
+    percent,
+  };
 }
 
 // Quantas luckboxes um jogador deveria ter ganho até certo nível.
