@@ -52,9 +52,19 @@ export function HomeControls() {
       }
 
       const res = await fetch("/api/sync-all", { method: "POST", headers });
-      const data = (await res.json()) as { synced?: number; error?: string };
+      const data = (await res.json()) as {
+        synced?: number;
+        failed?: number;
+        error?: string;
+      };
       if (!res.ok) throw new Error(data.error ?? "Falha ao sincronizar.");
-      setSyncMsg(`✅ ${data.synced ?? 0} sincronizados`);
+      const synced = data.synced ?? 0;
+      const failed = data.failed ?? 0;
+      setSyncMsg(
+        failed > 0
+          ? `⚠️ ${synced} sincronizados, ${failed} falharam`
+          : `✅ ${synced} sincronizados`,
+      );
       // Atualiza o mundo/leaderboard com os novos níveis.
       router.refresh();
     } catch (err) {

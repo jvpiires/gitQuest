@@ -3,6 +3,7 @@ import Link from "next/link";
 import { WorldWrapper } from "./src/components/WorldWrapper";
 import { Leaderboard } from "./src/components/Leaderboard";
 import { LuckboxChest } from "./src/components/LuckboxChest";
+import { SuggestionChest } from "./src/components/SuggestionChest";
 import { HomeControls } from "./src/components/HomeControls";
 
 export default async function Home() {
@@ -33,6 +34,9 @@ export default async function Home() {
 
       {/* Baú da Luckbox no canto inferior esquerdo */}
       <LuckboxChest />
+
+      {/* Caixa de sugestão para os jogadores enviarem melhorias ao admin */}
+      <SuggestionChest />
       
     </main>
   );

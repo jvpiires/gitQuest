@@ -59,10 +59,11 @@ export async function POST(request: Request) {
       );
     }
 
-    const synced = await syncAllUsers();
+    const { syncedUsers, failedCount } = await syncAllUsers();
     return NextResponse.json({
-      synced: synced.length,
-      users: synced,
+      synced: syncedUsers.length,
+      failed: failedCount,
+      users: syncedUsers,
     });
   } catch (error) {
     console.error("Erro no sync-all:", error);

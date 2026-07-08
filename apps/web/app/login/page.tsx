@@ -7,42 +7,61 @@ import { supabase } from "@gitquest/database";
 const CORPORATE_DOMAIN = "@seplag.mt.gov.br";
 
 export default function LoginPage() {
-  const [email, setEmail] = useState("");
+  const [mode, setMode] = useState<"magic" | "password" | "gitlab">("gitlab");
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">(
     "idle",
   );
   const [errorMsg, setErrorMsg] = useState("");
 
-  const handleLogin = async (email: string) => {
-    const normalizedEmail = email.trim().toLowerCase();
 
-    // Valida se é um email corporativo antes de enviar o link
-    if (!normalizedEmail.endsWith(CORPORATE_DOMAIN)) {
-      setStatus("error");
-      setErrorMsg(`Use seu email corporativo (${CORPORATE_DOMAIN}).`);
-      return;
-    }
 
+  const handleGitlabLogin = async () => {
     setStatus("sending");
     setErrorMsg("");
 
-    const { error } = await supabase.auth.signInWithOtp({
-      email: normalizedEmail,
-      options: {
-        // Após clicar no link do email, o Supabase volta para o callback
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
-      },
-    });
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "gitlab",
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`,
+        },
+      });
 
-    if (error) {
-      console.error("Erro ao enviar magic link:", error);
+      if (error) {
+        console.error("Erro ao entrar com GitLab SSO:", error);
+        setStatus("error");
+        setErrorMsg(
+          "GitLab SSO indisponível agora. Verifique se o provider GitLab está configurado no Supabase.",
+        );
+      }
+    } catch (err) {
+      console.error("Exceção ao iniciar GitLab SSO:", err);
       setStatus("error");
-      setErrorMsg("Não foi possível enviar o link. Tente novamente.");
-      return;
+      setErrorMsg("Falha ao iniciar login GitLab. Tente novamente.");
     }
-
-    setStatus("sent");
   };
+
+  let authContent: React.ReactNode;
+  if (mode === "gitlab") {
+    authContent = (
+      <div className="flex flex-col gap-4">
+        <p className="text-sm text-slate-300 text-center">
+          Entre direto com sua conta do GitLab, sem esperar email.
+        </p>
+        <button
+          type="button"
+          onClick={handleGitlabLogin}
+          disabled={status === "sending"}
+          className="w-full px-8 py-3 bg-orange-600 hover:bg-orange-700 disabled:bg-slate-700 disabled:cursor-not-allowed rounded-lg font-bold text-lg transition-colors"
+        >
+          {status === "sending" ? "Redirecionando..." : "Entrar com GitLab"}
+        </button>
+        {status === "error" && (
+          <p className="text-red-400 text-sm text-center">{errorMsg}</p>
+        )}
+      </div>
+    );
+  }
 
   return (
     <main className="min-h-screen flex items-center justify-center bg-slate-900 text-white p-4">
@@ -54,56 +73,27 @@ export default function LoginPage() {
           <p className="text-slate-400 text-sm">
             Entre na Taverna com seu email corporativo.
           </p>
+
+          <div className="mt-4 inline-flex rounded-lg border border-slate-700 overflow-hidden">
+            <button
+              type="button"
+              onClick={() => {
+                setMode("gitlab");
+                setStatus("idle");
+                setErrorMsg("");
+              }}
+              className={`px-3 py-1.5 text-xs font-bold uppercase tracking-wider transition-colors ${
+                mode === "gitlab"
+                  ? "bg-orange-600 text-white"
+                  : "bg-slate-900 text-slate-300 hover:bg-slate-800"
+              }`}
+            >
+              GitLab SSO
+            </button>
+          </div>
         </div>
 
-        {status === "sent" ? (
-          <div className="text-center bg-emerald-950/40 border border-emerald-800 rounded-lg p-6">
-            <p className="text-emerald-300 font-semibold mb-1">
-              📨 Link enviado!
-            </p>
-            <p className="text-slate-400 text-sm">
-              Verifique sua caixa de entrada em{" "}
-              <span className="text-slate-200 font-mono">{email}</span> e clique
-              no link para entrar.
-            </p>
-          </div>
-        ) : (
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              handleLogin(email);
-            }}
-            className="flex flex-col gap-4"
-          >
-            <div className="flex flex-col gap-2">
-              <label htmlFor="email" className="text-sm font-medium text-slate-300">
-                Email corporativo
-              </label>
-              <input
-                id="email"
-                type="email"
-                placeholder={`joao.silva${CORPORATE_DOMAIN}`}
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                autoComplete="email"
-                className="px-4 py-3 rounded-lg bg-slate-800 border border-slate-700 focus:outline-none focus:border-orange-500 text-white transition-colors"
-              />
-            </div>
-
-            {status === "error" && (
-              <p className="text-red-400 text-sm">{errorMsg}</p>
-            )}
-
-            <button
-              type="submit"
-              disabled={status === "sending" || !email}
-              className="mt-2 px-8 py-3 bg-orange-600 hover:bg-orange-700 disabled:bg-slate-700 disabled:cursor-not-allowed rounded-lg font-bold text-lg transition-colors"
-            >
-              {status === "sending" ? "Enviando..." : "Entrar com link mágico"}
-            </button>
-          </form>
-        )}
+        {authContent}
       </div>
     </main>
   );

@@ -13,8 +13,7 @@ const supabaseAdmin = getSupabaseAdmin(process.env.SUPABASE_SERVICE_ROLE_KEY!);
 
 // Configuração do GitLab — SEMPRE no servidor, nunca exposta ao client.
 // O GitLab interno (rede corporativa) só responde em http, por isso o default.
-const GITLAB_API_URL =
-  process.env.GITLAB_API_URL ?? "http://git.sad.infovia-mt/api/v4"; // NOSONAR
+const GITLAB_API_URL = process.env.GITLAB_API_URL;
 export const GITLAB_TOKEN = process.env.GITLAB_TOKEN;
 
 interface GitlabUser {
@@ -43,14 +42,32 @@ export interface SyncedUser {
   available_boxes: number;
 }
 
+export interface SyncAllResult {
+  syncedUsers: SyncedUser[];
+  failedCount: number;
+}
+
+function getGitlabApiUrl(): string {
+  const configured = GITLAB_API_URL?.trim();
+  if (configured) return configured;
+
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("GITLAB_API_URL não configurado em produção.");
+  }
+
+  // Fallback útil apenas para ambiente local/corporativo em desenvolvimento.
+  return "http://git.sad.infovia-mt/api/v4"; // NOSONAR
+}
+
 // Busca a XP retroativa somando os commits do histórico de "push" do usuário.
 async function fetchRetroactiveXp(gitlabUsername: string): Promise<number> {
+  const gitlabApiUrl = getGitlabApiUrl();
   const headers = { "PRIVATE-TOKEN": GITLAB_TOKEN ?? "" };
 
   // 1. Descobre o ID do usuário pelo username (normaliza: sem @, sem espaços).
   const cleanUsername = gitlabUsername.replace("@", "").trim();
   const userRes = await fetch(
-    `${GITLAB_API_URL}/users?username=${encodeURIComponent(cleanUsername)}`,
+    `${gitlabApiUrl}/users?username=${encodeURIComponent(cleanUsername)}`,
     { headers, signal: AbortSignal.timeout(8000) },
   );
   if (!userRes.ok) {
@@ -62,7 +79,7 @@ async function fetchRetroactiveXp(gitlabUsername: string): Promise<number> {
   // e filtra pelo username (case-insensitive).
   if (!Array.isArray(users) || users.length === 0) {
     const searchRes = await fetch(
-      `${GITLAB_API_URL}/users?search=${encodeURIComponent(cleanUsername)}`,
+      `${gitlabApiUrl}/users?search=${encodeURIComponent(cleanUsername)}`,
       { headers, signal: AbortSignal.timeout(8000) },
     );
     if (searchRes.ok) {
@@ -82,7 +99,7 @@ async function fetchRetroactiveXp(gitlabUsername: string): Promise<number> {
 
   // 2. Busca os eventos de push (paginado até 100 por página).
   const eventsRes = await fetch(
-    `${GITLAB_API_URL}/users/${userId}/events?action=pushed&per_page=100`,
+    `${gitlabApiUrl}/users/${userId}/events?action=pushed&per_page=100`,
     { headers, signal: AbortSignal.timeout(8000) },
   );
   if (!eventsRes.ok) {
@@ -110,6 +127,14 @@ export async function syncUser(user: DbUser): Promise<SyncedUser> {
   try {
     retroXp = await fetchRetroactiveXp(user.gitlab_username);
   } catch (gitlabError) {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error(
+        `GitLab indisponível para ${user.gitlab_username}: ${
+          gitlabError instanceof Error ? gitlabError.message : "erro desconhecido"
+        }`,
+      );
+    }
+
     console.warn(
       `⚠️ GitLab indisponível para ${user.gitlab_username}, usando XP atual.`,
       gitlabError,
@@ -148,7 +173,7 @@ export async function syncUser(user: DbUser): Promise<SyncedUser> {
 
 // Sincroniza TODOS os jogadores com o GitLab, em paralelo.
 // Retorna os snapshots dos que sincronizaram com sucesso.
-export async function syncAllUsers(): Promise<SyncedUser[]> {
+export async function syncAllUsers(): Promise<SyncAllResult> {
   const { data: users, error } = await supabaseAdmin
     .from("users")
     .select(
@@ -163,7 +188,17 @@ export async function syncAllUsers(): Promise<SyncedUser[]> {
     users.map((u) => syncUser(u as DbUser)),
   );
 
-  return results
+  const failed = results.filter((r) => r.status === "rejected");
+  if (failed.length > 0) {
+    console.warn(`⚠️ ${failed.length} jogador(es) falharam ao sincronizar no GitLab.`);
+  }
+
+  const syncedUsers = results
     .filter((r): r is PromiseFulfilledResult<SyncedUser> => r.status === "fulfilled")
     .map((r) => r.value);
+
+  return {
+    syncedUsers,
+    failedCount: failed.length,
+  };
 }

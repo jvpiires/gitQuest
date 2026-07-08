@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { supabase, type User } from "@gitquest/database";
 
+const ADMIN_USERNAME = "joao.santos";
+
 export function Leaderboard() {
   const [players, setPlayers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
@@ -48,25 +50,36 @@ export function Leaderboard() {
         <div className="text-slate-400 text-sm animate-pulse">Lendo os pergaminhos...</div>
       ) : (
         <ul className="flex flex-col gap-3">
-          {players.map((player, index) => (
-            <li 
+          {players.map((player, index) => {
+            const isAdmin =
+              player.gitlab_username?.toLowerCase() === ADMIN_USERNAME;
+            let rankClass = "text-slate-600";
+            if (index === 0) rankClass = "text-amber-400 drop-shadow-md";
+            else if (index === 1) rankClass = "text-slate-300";
+            else if (index === 2) rankClass = "text-amber-700";
+            return (
+            <li
               key={player.id} 
               className="flex items-center justify-between p-3 rounded-lg bg-slate-900/60 border border-slate-800 hover:border-slate-700 transition-colors"
             >
               <div className="flex items-center gap-3">
                 {/* Destaque para o Top 3 */}
-                <span className={`font-black text-lg ${
-                  index === 0 ? 'text-amber-400 drop-shadow-md' : 
-                  index === 1 ? 'text-slate-300' : 
-                  index === 2 ? 'text-amber-700' : 
-                  'text-slate-600'
-                }`}>
+                <span className={`font-black text-lg ${rankClass}`}>
                   #{index + 1}
                 </span>
                 
                 <div className="flex flex-col">
                   <span className="text-slate-200 font-semibold text-sm flex items-center gap-1">
                     {getClassIcon(player.class_type)} {player.gitlab_username}
+                  </span>
+                  <span
+                    className={`w-fit mt-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-widest ${
+                      isAdmin
+                        ? "bg-amber-500/20 text-amber-300 border border-amber-500/40"
+                        : "bg-slate-800 text-slate-300 border border-slate-700"
+                    }`}
+                  >
+                    {isAdmin ? "admin" : "plebeus"}
                   </span>
                   <span className="text-slate-500 text-xs">
                     Nível {player.current_level}
@@ -81,7 +94,8 @@ export function Leaderboard() {
                 </span>
               </div>
             </li>
-          ))}
+            );
+          })}
           
           {players.length === 0 && (
             <div className="text-slate-500 text-sm text-center py-4">
