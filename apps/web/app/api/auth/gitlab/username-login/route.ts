@@ -57,13 +57,17 @@ async function resolveGitlabUser(username: string): Promise<GitlabUser | null> {
   }
 
   const apiUrl = resolveGitlabApiUrl();
-  const exactRes = await fetch(
-    `${apiUrl}/users?username=${encodeURIComponent(username)}`,
-    {
+  let exactRes: Response;
+  try {
+    exactRes = await fetch(`${apiUrl}/users?username=${encodeURIComponent(username)}`, {
       headers,
       signal: AbortSignal.timeout(8000),
-    },
-  );
+    });
+  } catch {
+    throw new Error(
+      `Não foi possível conectar ao GitLab interno (${apiUrl}). Confira GITLAB_API_URL e acesso de rede do servidor.`,
+    );
+  }
 
   if (!exactRes.ok) {
     throw new Error(`Falha ao consultar usuário no GitLab (HTTP ${exactRes.status}).`);
@@ -74,10 +78,17 @@ async function resolveGitlabUser(username: string): Promise<GitlabUser | null> {
     return exactUsers[0];
   }
 
-  const searchRes = await fetch(`${apiUrl}/users?search=${encodeURIComponent(username)}`, {
-    headers,
-    signal: AbortSignal.timeout(8000),
-  });
+  let searchRes: Response;
+  try {
+    searchRes = await fetch(`${apiUrl}/users?search=${encodeURIComponent(username)}`, {
+      headers,
+      signal: AbortSignal.timeout(8000),
+    });
+  } catch {
+    throw new Error(
+      `Não foi possível conectar ao GitLab interno (${apiUrl}). Confira GITLAB_API_URL e acesso de rede do servidor.`,
+    );
+  }
 
   if (!searchRes.ok) {
     throw new Error(`Falha na busca de usuário no GitLab (HTTP ${searchRes.status}).`);
@@ -107,15 +118,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "username é obrigatório." }, { status: 400 });
     }
 
-    const gitlabUser = await resolveGitlabUser(normalizedUsername);
-    if (!gitlabUser?.username) {
-      return NextResponse.json(
-        { error: "Usuário não encontrado no GitLab interno." },
-        { status: 404 },
-      );
-    }
-
-    const username = gitlabUser.username.toLowerCase();
+    // Primeiro tenta autenticar pelo vínculo local para não depender da rede do GitLab
+    // em cada login. Isso evita erro para usuários já cadastrados.
+    const username = normalizedUsername;
     const { data: existingUser } = await supabaseAdmin
       .from("users")
       .select("id")
@@ -124,6 +129,14 @@ export async function POST(request: Request) {
 
     let userId = existingUser?.id;
     if (!userId) {
+      const gitlabUser = await resolveGitlabUser(username);
+      if (!gitlabUser?.username) {
+        return NextResponse.json(
+          { error: "Usuário não encontrado no GitLab interno." },
+          { status: 404 },
+        );
+      }
+
       userId = randomUUID();
       const { error: insertError } = await supabaseAdmin.from("users").insert({
         id: userId,
