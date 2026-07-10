@@ -7,6 +7,7 @@ export interface WorldHero {
   heroClass: HeroClass;
   isCurrentPlayer?: boolean;
   outfit?: "classic" | "midnight" | "royal";
+  avatarUrl?: string | null;
 }
 
 export interface PlayerProfile {

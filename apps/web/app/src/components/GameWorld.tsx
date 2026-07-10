@@ -8,14 +8,12 @@ interface GameWorldProps {
   heroes: WorldHero[];
 }
 
-const MAP_COLUMNS = 18;
-const MAP_ROWS = 18;
-const TILE_WIDTH = 96;
-const TILE_HEIGHT = 48;
-const MAP_ORIGIN_X = 800;
-const MAP_ORIGIN_Y = 125;
+const MAP_COLUMNS = 22;
+const MAP_ROWS = 22;
+const TILE_WIDTH = 104;
+const TILE_HEIGHT = 52;
 
-export default function GameWorld({ heroes }: GameWorldProps) {
+export default function GameWorld({ heroes }: Readonly<GameWorldProps>) {
   const gameRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -26,27 +24,51 @@ export default function GameWorld({ heroes }: GameWorldProps) {
       const Phaser = (await import("phaser")).default;
       if (disposed || !gameRef.current) return;
 
+      const viewportWidth = Math.max(1280, gameRef.current.clientWidth);
+      const viewportHeight = Math.max(720, gameRef.current.clientHeight);
+      const mapOriginX = viewportWidth / 2;
+      const mapOriginY = 36;
+
       const project = (column: number, row: number) => ({
-        x: MAP_ORIGIN_X + (column - row) * (TILE_WIDTH / 2),
-        y: MAP_ORIGIN_Y + (column + row) * (TILE_HEIGHT / 2),
+        x: mapOriginX + (column - row) * (TILE_WIDTH / 2),
+        y: mapOriginY + (column + row) * (TILE_HEIGHT / 2),
       });
 
       const config: Phaser.Types.Core.GameConfig = {
         type: Phaser.AUTO,
         parent: gameRef.current,
-        width: 1600,
-        height: 960,
+        width: viewportWidth,
+        height: viewportHeight,
         backgroundColor: "#0f172a",
-        scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
+        scale: { mode: Phaser.Scale.RESIZE, autoCenter: Phaser.Scale.CENTER_BOTH },
         scene: {
+          preload(this: Phaser.Scene) {
+            this.load.setCORS("anonymous");
+            this.load.spritesheet("kenneyUrban", "/assets/kenney/Tilemap/tilemap.png", { frameWidth: 16, frameHeight: 16 });
+            heroes.forEach((hero) => {
+              if (!hero.avatarUrl) return;
+              const key = `hero-avatar-${hero.id}`;
+              if (!this.textures.exists(key)) {
+                this.load.image(key, hero.avatarUrl);
+              }
+            });
+          },
           create(this: Phaser.Scene) {
             const floor = this.add.graphics();
             const props = this.add.graphics();
 
+            // Base local do RPG Urban Pack (Kenney, CC0): detalhes urbanos em pixel art.
+            [
+              [140, 120, 0],
+              [viewportWidth - 180, 120, 1],
+              [140, viewportHeight - 130, 2],
+              [viewportWidth - 180, viewportHeight - 130, 3],
+            ].forEach(([x, y, frame]) => this.add.sprite(x, y, "kenneyUrban", frame).setScale(3).setDepth(2));
+
             floor.fillStyle(0x0ea5e9, 1);
-            floor.fillRect(0, 0, 1600, 960);
+            floor.fillRect(0, 0, viewportWidth, viewportHeight);
             floor.fillStyle(0x0f172a, 1);
-            floor.fillRect(0, 0, 1600, 960);
+            floor.fillRect(0, 0, viewportWidth, viewportHeight);
 
             for (let column = 0; column < MAP_COLUMNS; column += 1) {
               for (let row = 0; row < MAP_ROWS; row += 1) {
@@ -75,16 +97,39 @@ export default function GameWorld({ heroes }: GameWorldProps) {
             });
 
             const createHero = (hero: WorldHero, index: number) => {
-              const point = project((index * 3 + 3) % 15, (index * 5 + 2) % 15);
+              const point = project((index * 3 + 3) % 19, (index * 5 + 2) % 19);
               const palette = HERO_CLASSES[hero.heroClass];
               const sprite = this.add.container(point.x, point.y + 8);
+              const shadow = this.add.ellipse(0, 36, 32, 12, 0x020617, 0.35);
               const avatar = this.add.graphics();
               avatar.fillStyle(0x111827, 1).fillRoundedRect(-18, -2, 36, 46, 5);
-              avatar.fillStyle(0xffd7b5, 1).fillCircle(0, -12, 15);
               const outfitColor = hero.outfit === "midnight" ? 0x111827 : hero.outfit === "royal" ? 0xf59e0b : Number.parseInt(palette.color.slice(1), 16);
               avatar.fillStyle(outfitColor, 1).fillRoundedRect(-14, 1, 28, 35, 3);
               avatar.lineStyle(4, 0xffffff, 0.7).strokeRoundedRect(-14, 1, 28, 35, 3);
+              sprite.add(shadow);
               sprite.add(avatar);
+
+              const avatarKey = `hero-avatar-${hero.id}`;
+              if (this.textures.exists(avatarKey)) {
+                const face = this.add.image(0, -12, avatarKey).setDisplaySize(30, 30);
+                const maskShape = this.add.graphics({ x: 0, y: 0 });
+                maskShape.setVisible(false);
+                maskShape.fillStyle(0xffffff, 1);
+                maskShape.fillCircle(0, -12, 15);
+                face.setMask(new Phaser.Display.Masks.GeometryMask(this, maskShape));
+                sprite.add(face);
+              } else {
+                avatar.fillStyle(0xffd7b5, 1).fillCircle(0, -12, 15);
+              }
+
+              this.tweens.add({
+                targets: sprite,
+                y: sprite.y - 3,
+                duration: 1200 + index * 40,
+                yoyo: true,
+                repeat: -1,
+                ease: "Sine.InOut",
+              });
 
               const label = this.add.text(point.x, point.y - 56, `${hero.name}\nLv.${levelFromXp(hero.totalXp)}  |  ${hero.totalXp.toLocaleString("pt-BR")} XP`, {
                 fontFamily: "monospace",
@@ -103,7 +148,7 @@ export default function GameWorld({ heroes }: GameWorldProps) {
             const playerEntity = player ? createHero({ ...player, isCurrentPlayer: true }, 8) : undefined;
             otherHeroes.slice(0, 11).forEach((hero, index) => createHero(hero, index));
 
-            const banner = this.add.text(800, 490, "PRAÇA CENTRAL  •  caminhe com WASD, setas ou clique no chão", {
+            const banner = this.add.text(viewportWidth / 2, viewportHeight / 2 + 30, "PRACA CENTRAL  •  caminhe com WASD, setas ou clique no chao", {
               fontFamily: "monospace", fontSize: "18px", color: "#fef3c7", backgroundColor: "#78350f", padding: { x: 18, y: 8 },
             }).setOrigin(0.5).setAlpha(0.9);
 
@@ -135,10 +180,10 @@ export default function GameWorld({ heroes }: GameWorldProps) {
               }
 
               if (dx || dy) {
-                playerEntity.sprite.x = Phaser.Math.Clamp(playerEntity.sprite.x + dx, 120, 1480);
-                playerEntity.sprite.y = Phaser.Math.Clamp(playerEntity.sprite.y + dy, 100, 870);
+                playerEntity.sprite.x = Phaser.Math.Clamp(playerEntity.sprite.x + dx, 90, viewportWidth - 90);
+                playerEntity.sprite.y = Phaser.Math.Clamp(playerEntity.sprite.y + dy, 80, viewportHeight - 80);
                 playerEntity.label.setPosition(playerEntity.sprite.x, playerEntity.sprite.y - 56);
-                banner.setText("PRAÇA CENTRAL  •  explorando o reino");
+                banner.setText("PRACA CENTRAL  •  explorando o reino");
               }
             });
           },

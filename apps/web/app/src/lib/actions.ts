@@ -54,6 +54,29 @@ export async function removePlayerFromGuild(userId: string, guildId: string) {
   return { success: true };
 }
 
+// Perfil do próprio jogador: usa a chave administrativa para não depender de
+// políticas RLS do navegador. A interface só envia o id da sessão autenticada.
+export async function savePlayerCustomizationAction(userId: string, classType: string, avatarStyle: string) {
+  const validClasses = ["ASSASSIN", "MAGE", "CLERIC", "ARCHER"];
+  const validStyles = ["classic", "midnight", "royal"];
+  if (!validClasses.includes(classType) || !validStyles.includes(avatarStyle)) throw new Error("Personalização inválida.");
+  const admin = getSupabaseAdmin(process.env.SUPABASE_SERVICE_ROLE_KEY!);
+  const { error } = await admin.from("profiles").update({ class_type: classType, avatar_style: avatarStyle }).eq("id", userId);
+  if (error) throw new Error(error.message);
+  return { success: true };
+}
+
+export async function setPlayerGuildAction(userId: string, guildId: string | null) {
+  const admin = getSupabaseAdmin(process.env.SUPABASE_SERVICE_ROLE_KEY!);
+  const { error: deleteError } = await admin.from("guild_members").delete().eq("user_id", userId);
+  if (deleteError) throw new Error(deleteError.message);
+  if (guildId) {
+    const { error: insertError } = await admin.from("guild_members").insert({ user_id: userId, guild_id: guildId });
+    if (insertError) throw new Error(insertError.message);
+  }
+  return { success: true };
+}
+
 export async function fetchOrganogramData() {
   const admin = getSupabaseAdmin(process.env.SUPABASE_SERVICE_ROLE_KEY!);
   const [{ data: profiles, error: profilesError }, { data: guildMembers, error: membersError }] = await Promise.all([
