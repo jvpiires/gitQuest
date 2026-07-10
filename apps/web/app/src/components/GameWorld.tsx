@@ -19,7 +19,7 @@ export default function GameWorld({ heroes }: GameWorldProps) {
   const gameRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    let game: import("phaser").default.Game | undefined;
+    let game: { destroy: (removeCanvas: boolean, noReturn?: boolean) => void } | undefined;
     let disposed = false;
 
     const initPhaser = async () => {
