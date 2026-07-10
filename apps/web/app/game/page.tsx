@@ -33,7 +33,7 @@ export default function GamePage() {
       } else {
         const { data: currentProfile } = await supabase
           .from("profiles")
-          .select("id, github_username, total_xp, avatar_url, class_type, tech_stack")
+          .select("id, github_username, total_xp, avatar_url, class_type, tech_stack, avatar_style")
           .eq("id", user.id)
           .maybeSingle();
 
@@ -42,12 +42,13 @@ export default function GamePage() {
           github_username: user.user_metadata?.user_name || user.email?.split("@")[0] || "aventureiro",
           total_xp: 0,
           class_type: "MAGE",
+          avatar_style: "classic",
         };
         setProfile(playerProfile);
 
         const { data: worldProfiles } = await supabase
           .from("profiles")
-          .select("id, github_username, total_xp, class_type")
+          .select("id, github_username, total_xp, class_type, avatar_style")
           .order("total_xp", { ascending: false })
           .limit(12);
 
@@ -56,6 +57,7 @@ export default function GamePage() {
           name: worldProfile.github_username,
           totalXp: worldProfile.total_xp || 0,
           heroClass: normalizeHeroClass(worldProfile.class_type),
+          outfit: worldProfile.avatar_style === "midnight" || worldProfile.avatar_style === "royal" ? worldProfile.avatar_style : "classic",
           isCurrentPlayer: worldProfile.id === user.id,
         }));
 
@@ -65,6 +67,7 @@ export default function GamePage() {
             name: playerProfile.github_username,
             totalXp: playerProfile.total_xp || 0,
             heroClass: normalizeHeroClass(playerProfile.class_type),
+            outfit: playerProfile.avatar_style === "midnight" || playerProfile.avatar_style === "royal" ? playerProfile.avatar_style : "classic",
             isCurrentPlayer: true,
           });
         }

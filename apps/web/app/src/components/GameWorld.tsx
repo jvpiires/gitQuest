@@ -81,7 +81,8 @@ export default function GameWorld({ heroes }: GameWorldProps) {
               const avatar = this.add.graphics();
               avatar.fillStyle(0x111827, 1).fillRoundedRect(-18, -2, 36, 46, 5);
               avatar.fillStyle(0xffd7b5, 1).fillCircle(0, -12, 15);
-              avatar.fillStyle(Number.parseInt(palette.color.slice(1), 16), 1).fillRoundedRect(-14, 1, 28, 35, 3);
+              const outfitColor = hero.outfit === "midnight" ? 0x111827 : hero.outfit === "royal" ? 0xf59e0b : Number.parseInt(palette.color.slice(1), 16);
+              avatar.fillStyle(outfitColor, 1).fillRoundedRect(-14, 1, 28, 35, 3);
               avatar.lineStyle(4, 0xffffff, 0.7).strokeRoundedRect(-14, 1, 28, 35, 3);
               sprite.add(avatar);
 

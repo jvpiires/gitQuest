@@ -6,6 +6,7 @@ export interface WorldHero {
   totalXp: number;
   heroClass: HeroClass;
   isCurrentPlayer?: boolean;
+  outfit?: "classic" | "midnight" | "royal";
 }
 
 export interface PlayerProfile {
@@ -15,6 +16,7 @@ export interface PlayerProfile {
   avatar_url?: string | null;
   class_type?: string | null;
   tech_stack?: string[] | null;
+  avatar_style?: string | null;
 }
 
 export function normalizeHeroClass(value?: string | null): HeroClass {

@@ -30,14 +30,15 @@ export default function ProfilePage() {
       if (!user) return;
       const { data } = await supabase
         .from("profiles")
-        .select("id, github_username, total_xp, avatar_url, class_type, tech_stack")
+        .select("id, github_username, total_xp, avatar_url, class_type, tech_stack, avatar_style")
         .eq("id", user.id)
         .maybeSingle();
       const currentProfile: PlayerProfile = data || {
         id: user.id,
         github_username: user.user_metadata?.user_name || user.email?.split("@")[0] || "aventureiro",
         total_xp: 0,
-        class_type: "MAGE",
+      class_type: "MAGE",
+        avatar_style: "classic",
       };
       setProfile(currentProfile);
       setHeroClass(normalizeHeroClass(currentProfile.class_type));
@@ -56,9 +57,9 @@ export default function ProfilePage() {
   const saveCustomization = async () => {
     if (!profile) return;
     setSaving(true);
-    const { error } = await supabase.from("profiles").update({ class_type: heroClass }).eq("id", profile.id);
+    const { error } = await supabase.from("profiles").update({ class_type: heroClass, avatar_style: outfit }).eq("id", profile.id);
     if (!error) {
-      setProfile({ ...profile, class_type: heroClass });
+      setProfile({ ...profile, class_type: heroClass, avatar_style: outfit });
       window.localStorage.setItem(`gitquest-outfit-${profile.id}`, outfit);
       setFeedback("Personalização salva.");
     } else {
@@ -72,14 +73,14 @@ export default function ProfilePage() {
     const previousClass = heroClass;
     setHeroClass(nextClass);
     setSaving(true);
-    const { error } = await supabase.from("profiles").update({ class_type: nextClass }).eq("id", profile.id);
+    const { error } = await supabase.from("profiles").update({ class_type: nextClass, avatar_style: outfit }).eq("id", profile.id);
     setSaving(false);
     if (error) {
       setHeroClass(previousClass);
       setFeedback(`Não foi possível trocar a classe: ${error.message}`);
       return;
     }
-    setProfile({ ...profile, class_type: nextClass });
+    setProfile({ ...profile, class_type: nextClass, avatar_style: outfit });
     setFeedback(`${HERO_CLASSES[nextClass].label} equipado.`);
   };
 
