@@ -21,6 +21,7 @@ const GameWorld = dynamic(() => import("../src/components/GameWorld"), {
 export default function GamePage() {
   const [profile, setProfile] = useState<PlayerProfile | null>(null);
   const [heroes, setHeroes] = useState<WorldHero[]>([]);
+  const [guilds, setGuilds] = useState<{ id: string; name: string; icon_url?: string | null }[]>([]);
   const router = useRouter();
 
   useEffect(() => {
@@ -68,6 +69,8 @@ export default function GamePage() {
           });
         }
         setHeroes(worldHeroes);
+        const { data: worldGuilds } = await supabase.from("guilds").select("id, name, icon_url").order("name");
+        setGuilds(worldGuilds || []);
       }
     };
     checkUser();
@@ -86,6 +89,8 @@ export default function GamePage() {
         heroClass={heroClass}
         level={progression.level}
         xp={profile.total_xp || 0}
+        leaderboard={heroes}
+        guilds={guilds}
       />
     </main>
   );
